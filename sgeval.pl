@@ -17,11 +17,12 @@ if($#gtf_files < 0 || !defined ($output_dir)) {
   print STDERR "USAGE: $0 -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
   exit();
 }
-
+mkdir $output_dir;
 
 # reading all GTFs
 my %sites;
 my %component;
+my @sources;
 my $ref_source;
 my $first_source = 1;
 foreach my $gtf_file (@gtf_files) 
@@ -30,6 +31,7 @@ foreach my $gtf_file (@gtf_files)
     my $source = $gtf_file;
     $source =~ s/\.gtf//g;
     $source =~ s%.+/(.+)$%$1%g;
+    push @sources, $source;
     if($first_source == 1) {
       $ref_source = $source;
       $first_source = 0;
@@ -47,7 +49,6 @@ foreach my $gtf_file (@gtf_files)
   }
 build_components(\%component, \%sites);
 
-
 my %component_by_seqname;
 foreach my $entry  (sort {$a <=> $b} keys %component)
   {
@@ -55,14 +56,62 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
     push @{$component_by_seqname{$1}},$entry;	
   }
 
+my $number_of_transcripts = 0;
+my %gvenn_overlaped = gene_overlap_venn();
+my %gvenn_exact = gene_exact_venn();
+
+generate_result("gene_overlaped", \%gvenn_overlaped);
+generate_result("gene_exact", \%gvenn_exact);
 
 
-gene_venn();
+sub generate_result {
+  my $output_filename = shift;
+  my $ref_venn = shift;
+  my %venn = %{$ref_venn};
+  open (OUTPUT, ">$output_dir/$output_filename"."_venn.txt") or die "$!";
+  foreach my $key (keys %venn) {
+    print OUTPUT $key."\t".scalar @{$venn{$key}}."\n";
+    foreach my $el ( @{$venn{$key}} )
+      {
+	print OUTPUT "\t".$el."\n";
+      }
+    print OUTPUT "//\n";
+  }
+  close(OUTPUT);
+  open (OUTPUT, ">$output_dir/$output_filename"."_accuracy.txt") or die "$!";
+  foreach my $source (@sources) {
+    my $tp = 0;
+    my $fp = 0;
+    my $fn = 0;
+    if($source eq $ref_source) {
+      next;
+    }
+    foreach my $subset (keys %venn) 
+      {
+	my $count = scalar(@{$venn{$subset}});
+	if(($subset =~ /$source/) && ( $subset =~ /$ref_source/)) {
+	  $tp += $count;
+	} elsif(!($subset =~ /$source/) && ( $subset =~ /$ref_source/)) {
+	  $fn += $count;
+	} elsif(($subset =~ /$source/) && !( $subset =~ /$ref_source/)) {
+	  $fp += $count;
+	} else {
+	}
+      }
+    print OUTPUT $source."\t".($tp+$fp)."\n";
+    print OUTPUT "\ttp = $tp\n\tfp = $fp\n\tfn = $fn\n";
+    printf OUTPUT ("\tSpecificity\t%.2f\n\tSensitivity\t%.2f\n", (100.0*($tp/($tp + $fp))),(100.0*($tp/($tp + $fn))));
+    print OUTPUT "//\n";
+  }
+  close(OUTPUT);
+  
+}
 
 
 
-sub gene_venn { 
+sub gene_exact_venn { 
   my %subsets;
+  my %gvenn;
   foreach my $seqname (keys %component_by_seqname) 
     {
       foreach my $component (@{$component_by_seqname{$seqname}}) 
@@ -71,39 +120,149 @@ sub gene_venn {
 	  foreach my $node (@{$component{$component}})
 	    {
 	      my $label = "";
-	      foreach my $source (sort {$a cmp $b} (@{$sites{$node}->{Source}})) 
+	      my $first = 1;
+	      foreach my $next_node  (keys %{$sites{$node}->{Next}}) 
 		{
-		  $label .= "<$source>";
+		  my @transcripts = @{$sites{$node}->{Next}->{$next_node}};
+		  foreach my $source  (sort {$a cmp $b} (@transcripts)) 
+		    {
+		      if($first ) {
+			$label .= "$source";
+			$first = 0;
+		      } 
+		      else {
+			$label .= ";$source";
+		      }
+		    }
+		  $recticulate{$label} = {};
 		}
-	      $recticulate{$label} = {};
 	    }
-	  foreach my $from (keys %recticulate) {
-	    foreach my $to (keys %recticulate) {
-	      if($from eq $to){
-		next;
+
+
+	  %recticulate = %{build_recticulate(\%recticulate)};
+
+	  my @sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
+	  my $k = 0;
+	  while ($k < scalar(@sorted) && scalar(@sorted) > 0)
+	    {
+	      my $from = $sorted[$k];
+	      if(scalar (@{$recticulate{$from}->{From}}) <= 1) {
+		my $subsets = build_subset_string($from);
+		push @{$gvenn{$subsets}}, $from;
+		%recticulate = () ;
+		foreach my $el (@sorted)
+		  {
+		    my @remove_subset = split(";", $from);
+		    foreach my $xx (@remove_subset) {
+		      $el =~ s/;$xx//g;
+		      $el =~ s/$xx;//g;
+		      $el =~ s/$xx//g;
+		    }
+		    if(!$el =~/^\s*$/){
+		      $recticulate{$el} = {};
+		    }
+		    
+		  }
+		%recticulate = %{build_recticulate(\%recticulate)};
+		@sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
+		$k = 0;
+	      } else {
+		$k++;
 	      }
-	      if($to =~ /$from/) 
-		{
-		  push @{$recticulate{$from}->{Next}}, $to;
-		  push @{$recticulate{$to}->{From}}, $from;
-		}
 	    }
-	  }
-	  print $seqname."\n";
-	  foreach my $from (keys %recticulate) {
-	    if(!defined $recticulate{$from}->{From}) {
-	      $from =~ s/></;/g;
-	      $from =~ s/<//g;
-	      $from =~ s/>//g;
-	      
-	      print " ".$from."\n";
-	    }
-	  }
 	}
     }
+  return %gvenn;
+}
+
+sub build_subset_string {
+  my $str = shift;
+  my @sets = split(";", $str);
+  my $firsttime = 1;
+  my $subsets = "";
+  my %aux = ();
+  foreach my $set (sort {$a cmp $b} (@sets)) 
+    {
+      if($set =~/(.+)?:(.+)/) {
+	if(defined $aux{$1}) {
+	  next; 
+	}
+	$aux{$1} = 1;
+	if($firsttime) {
+	  $subsets .= $1;
+	  $firsttime = 0;
+	} else {
+	  $subsets .= "_".$1;
+	}
+      }
+    }
+  return $subsets;
+}
+sub gene_overlap_venn { 
+  my %subsets;
+  my %gvenn;
+  foreach my $seqname (keys %component_by_seqname) 
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}}) 
+	{
+	  my %aux;
+	  my $list ="";
+	  my $first = 1;
+
+	  foreach my $x (@{$component{$c}}) {
+	    foreach my $s (@{ $sites{$x}->{Source}}){
+	      $aux{$s} = 1;
+	    }
+	  }
+	  foreach my $x (keys %aux) {
+	    if($first) {
+	      $list .= "$x";
+	      $first = 0;
+	    } else{
+	      $list .= ";$x";
+	    }
+	  }
+	  my $subset = build_subset_string($list);
+	  push @{$gvenn{$subset}}, $list;
+	}
+
+    }
+  return %gvenn;
 }
 
 
+
+
+
+sub build_recticulate {
+  my $ref = shift;
+  my %recticulate = %{$ref};
+  foreach my $from (keys %recticulate) {
+    foreach my $to (keys %recticulate) {
+      my @firstset = split(";", $from);
+      my @secondset = split(";", $to);
+      my $is_subset = 1;
+      foreach my $el (@firstset)  {
+	my $found = 0;
+	foreach my $el2 (@secondset) {
+	  if($el eq $el2) {
+	    $found = 1;
+	    last;
+	  }
+	}
+	if (!$found) {
+	  $is_subset = 0;
+	}
+      }
+      if($is_subset) 
+	{
+	  push @{$recticulate{$from}->{Next}}, $to;
+	  push @{$recticulate{$to}->{From}}, $from;
+	}
+    }
+  }
+  return \%recticulate;
+}
 
 
 
