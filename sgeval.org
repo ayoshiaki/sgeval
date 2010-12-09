@@ -1,0 +1,124 @@
+* Medidas de exatidão
+
+** criar tres diretorios para a saida:
+gene
+exon
+sites
+     
+** para cada sequencia, precisamos gerar:
+*** TODO diagrama de venn por transcrito
+[ ] criar um arquivo para cada subset com a lista dos genes 
+[ ] gerar um arquivo com os valores de Sp, Sn 
+[ ] gerar uma tabela com as contagens de cada subconjunto
+[ ] gerar para cada sequencia, os grafos de splicing
+
+
+*** TODO diagrama de venn por exon
+[ ] criar um arquivo para cada subset com a lista dos exons
+[ ] gerar um arquivo com os valores de Sp, Sn
+[ ] gerar uma tabela com as contagens totais de cada subconjunto
+[ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
+
+
+*** TODO diagrama de venn por sitio
+[ ] criar um arquivo para cada subset com a lista dos sitios
+    - seqname;type;start;stop;strand
+[ ] gerar um arquivo com os valores de Sp, Sn contra a referencia
+[ ] gerar uma tabela com as contagens de cada subconjunto
+[ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
+
+*** TODO diagram de venn por nucleotideo
+[ ] mostrar o resultado em termos de Sp, Sn... contra a referencia
+[ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
+
+
+
+
+
+my %site_table;
+my %site_total;
+foreach my $seqname (keys %component_by_seqname) 
+  {
+    print "> ".$seqname."\n";
+    foreach my $c ( @{$component_by_seqname{$seqname}}) 
+      {
+	my @start_nodes;
+	my @end_nodes;
+	foreach my $node (@{$component{$c}})
+	  {
+	    my @from_nodes = keys %{$sites{$node}->{From}};
+	    my @to_nodes = keys %{$sites{$node}->{Next}};
+	    if(scalar(@from_nodes) == 0) {
+	      push @start_nodes, $node;
+	    }
+	    if(scalar(@to_nodes) == 0) {
+	      push @end_nodes, $node;
+	    }
+	  }
+
+	foreach my $start (@start_nodes) {
+	  foreach my $node (keys %{$sites{$start}->{Next}})
+	    {
+	      print "$start -> $node \n";
+	      foreach my $annot (@{$sites{$start}->{Next}->{$node}}) {
+		print "\t $annot\n";
+	      }
+	    }
+	}
+	
+
+
+	print "  COMPONENT: $c\n";
+	foreach my $node (@{$component{$c}}) 
+	  {
+	    my %subsetnames;
+	    print "\t".$node."\n";
+	    foreach my $source (@{$sites{$node}->{Source}})
+	      {
+		$source =~ m/(.+)?:.*/;
+		$subsetnames{$1} = 1;
+		print "\t\t".$source."\n";
+	      }
+	    my $subsetname = join("_", sort {$a cmp $b} (keys %subsetnames));
+	    $node =~ /(.+)?:\d+?,(.*)/;
+	    my $sitename = $2;
+	    $site_table{$subsetname}{$sitename} +=1;
+	    foreach my $setname (keys %subsetnames) {
+	      $site_total{$setname}{$sitename} += 1;
+	    }
+	  }
+      }
+  }
+# print Dumper \%site_table;
+
+foreach my $subsetname (keys %site_table) 
+  {
+    print "subset\t";
+    foreach my $site (keys %{$site_table{$subsetname}} ) 
+      {
+	print "\t".$site;
+      }
+    print "\n";
+    last;
+  }
+
+foreach my $subsetname (keys %site_table) 
+  {
+    print $subsetname."\t";
+    foreach my $site (keys %{$site_table{$subsetname}} ) 
+      {
+	print "\t".$site_table{$subsetname}{$site};
+      }
+    print "\n";
+  }
+
+foreach my $subsetname (keys %site_total) 
+  {
+    print $subsetname."_total\t";
+    foreach my $site (keys %{$site_total{$subsetname}} ) 
+      {
+	print "\t".$site_total{$subsetname}{$site};
+      }
+    print "\n";
+  }
+

@@ -49,8 +49,6 @@ build_components(\%component, \%sites);
 
 
 my %component_by_seqname;
-
-
 foreach my $entry  (sort {$a <=> $b} keys %component)
   {
     ${$component{$entry}}[0] =~ m/(.+)?:.*/;
@@ -59,67 +57,54 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
 
 
 
-my %site_table;
-my %site_total;
-foreach my $seqname (keys %component_by_seqname) 
-  {
-#    print "> ".$seqname."\n";
-    foreach my $c ( @{$component_by_seqname{$seqname}}) 
-      {
-#	print "  COMPONENT: $c\n";
-	foreach my $node (@{$component{$c}}) 
-	  {
-	    my %subsetnames;
-#	    print "\t".$node."\n";
-	    foreach my $source (@{$sites{$node}->{Source}})
-	      {
-		$source =~ m/(.+)?:.*/;
-		$subsetnames{$1} = 1;
-#		print "\t\t".$source."\n";
+gene_venn();
+
+
+
+sub gene_venn { 
+  my %subsets;
+  foreach my $seqname (keys %component_by_seqname) 
+    {
+      foreach my $component (@{$component_by_seqname{$seqname}}) 
+	{
+	  my %recticulate;
+	  foreach my $node (@{$component{$component}})
+	    {
+	      my $label = "";
+	      foreach my $source (sort {$a cmp $b} (@{$sites{$node}->{Source}})) 
+		{
+		  $label .= "<$source>";
+		}
+	      $recticulate{$label} = {};
+	    }
+	  foreach my $from (keys %recticulate) {
+	    foreach my $to (keys %recticulate) {
+	      if($from eq $to){
+		next;
 	      }
-	    my $subsetname = join("_", sort {$a cmp $b} (keys %subsetnames));
-	    $node =~ /(.+)?:\d+?,(.*)/;
-	    my $sitename = $2;
-	    $site_table{$subsetname}{$sitename} +=1;
-	    foreach my $setname (keys %subsetnames) {
-	      $site_total{$setname}{$sitename} += 1;
+	      if($to =~ /$from/) 
+		{
+		  push @{$recticulate{$from}->{Next}}, $to;
+		  push @{$recticulate{$to}->{From}}, $from;
+		}
 	    }
 	  }
-      }
-  }
-#print Dumper \%site_table;
+	  print $seqname."\n";
+	  foreach my $from (keys %recticulate) {
+	    if(!defined $recticulate{$from}->{From}) {
+	      $from =~ s/></;/g;
+	      $from =~ s/<//g;
+	      $from =~ s/>//g;
+	      
+	      print " ".$from."\n";
+	    }
+	  }
+	}
+    }
+}
 
 
-foreach my $subsetname (keys %site_table) 
-  {
-    print "subset\t";
-    foreach my $site (keys %{$site_table{$subsetname}} ) 
-      {
-	print "\t".$site;
-      }
-    print "\n";
-    last;
-  }
 
-foreach my $subsetname (keys %site_table) 
-  {
-    print $subsetname."\t";
-    foreach my $site (keys %{$site_table{$subsetname}} ) 
-      {
-	print "\t".$site_table{$subsetname}{$site};
-      }
-    print "\n";
-  }
-
-foreach my $subsetname (keys %site_total) 
-  {
-    print $subsetname."_total\t";
-    foreach my $site (keys %{$site_total{$subsetname}} ) 
-      {
-	print "\t".$site_total{$subsetname}{$site};
-      }
-    print "\n";
-  }
 
 
 sub process_forward {
