@@ -38,7 +38,6 @@ foreach my $gtf_file (@gtf_files)
     }
     foreach my $gene (@{$gtf->genes()}) 
       {
-	
 	if($gene->strand() eq "+") 
 	  {
 	    process_forward($gene, \%sites, $source);
@@ -89,11 +88,13 @@ sub generate_result {
     foreach my $subset (keys %venn) 
       {
 	my $count = scalar(@{$venn{$subset}});
-	if(($subset =~ /$source/) && ( $subset =~ /$ref_source/)) {
+	my $a = ($subset =~ /^$source$/) || ($subset =~ /^$source(\|)/)|| ($subset =~ /(\|)$source(\|)/) || ($subset =~ /(|)$source$/);
+	my $b = ($subset =~ /^$ref_source$/) || ($subset =~ /^$ref_source(\|)/)|| ($subset =~ /(\|)$ref_source(\|)/) || ($subset =~ /(|)$ref_source$/);
+	if($a && $b) {
 	  $tp += $count;
-	} elsif(!($subset =~ /$source/) && ( $subset =~ /$ref_source/)) {
+	} elsif(!($a) && ( $b)) {
 	  $fn += $count;
-	} elsif(($subset =~ /$source/) && !( $subset =~ /$ref_source/)) {
+	} elsif(($a) && !( $b)) {
 	  $fp += $count;
 	} else {
 	}
@@ -192,7 +193,7 @@ sub build_subset_string {
 	  $subsets .= $1;
 	  $firsttime = 0;
 	} else {
-	  $subsets .= "_".$1;
+	  $subsets .= "|".$1;
 	}
       }
     }
