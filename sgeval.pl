@@ -58,9 +58,15 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
 my $number_of_transcripts = 0;
 my %gvenn_overlaped = gene_overlap_venn();
 my %gvenn_exact = gene_exact_venn();
+my %exon_exact = exon_exact_venn();
+my %exon_overlaped = exon_overlaped_venn();
+my %nucleotide = nucleotide_venn();
 
 generate_result("gene_overlaped", \%gvenn_overlaped);
 generate_result("gene_exact", \%gvenn_exact);
+generate_result("exon_exact", \%exon_exact);
+generate_result("exon_overlaped", \%exon_overlaped);
+generate_result("nucleotide", \%nucleotide);
 
 
 sub generate_result {
@@ -100,7 +106,7 @@ sub generate_result {
 	}
       }
     print OUTPUT $source."\t".($tp+$fp)."\n";
-    print OUTPUT "\ttp = $tp\n\tfp = $fp\n\tfn = $fn\n";
+    print OUTPUT "\tTP\t$tp\n\tFP\t$fp\n\tFN\t$fn\n";
     printf OUTPUT ("\tSpecificity\t%.2f\n\tSensitivity\t%.2f\n", (100.0*($tp/($tp + $fp))),(100.0*($tp/($tp + $fn))));
     print OUTPUT "//\n";
   }
@@ -175,6 +181,11 @@ sub gene_exact_venn {
     }
   return %gvenn;
 }
+
+
+
+
+
 
 sub build_subset_string {
   my $str = shift;
@@ -264,6 +275,212 @@ sub build_recticulate {
   }
   return \%recticulate;
 }
+
+
+sub nucleotide_venn {
+  my %nucleotide_venn;
+
+  foreach my $seqname (keys %component_by_seqname) 
+    {
+      my %intervals;
+
+      foreach my $c (@{$component_by_seqname{$seqname}}) 
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if(
+		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+		 || 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
+		 ||
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		)
+		{
+		  my $strand = $sites{$node}->{Strand};
+		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		    {
+		      $node =~ m/(.+)?:(\d+),(.+)/;
+		      my $start = $2;
+		      $next_node =~ m/(.+)?:(\d+),(.+)/;
+		      my $end = $2;
+		      for (my $i = $start;  $i <= $end; $i++)
+			{
+			  foreach my $source (@{$sites{$node}->{Next}->{$next_node}}) {
+			    push @{$intervals{$strand}{$i}}, $source;
+			  }
+			}
+		    }
+		}
+	    }
+	  foreach my $strand (keys %intervals) {
+	    foreach my $i (sort {$a <=> $b} (keys %{$intervals{$strand}})) 
+	      {
+		my %aux;
+		foreach my $source (@{$intervals{$strand}{$i}}) 
+		  {
+		    $source =~ /(.+)?:(.+)/;
+		    $aux{$1} = 1;
+		  }
+		my $subset;
+		my $first = 1;
+		foreach my $k (sort {$a cmp $b} (keys %aux)) {
+		  if($first) {
+		    $first = 0;
+		    $subset .= $k;
+		  } else {
+		    $subset .= "|$k";
+		  } 
+		}
+		
+		push @{$nucleotide_venn{$subset}}, "$seqname,$strand:$i";
+	      }
+	  }
+	}
+    }
+  return %nucleotide_venn;
+}
+
+
+sub exon_overlaped_venn {
+  my %exon_overlaped_venn;
+  foreach my $seqname (keys %component_by_seqname) 
+    {
+      my %intervals;
+
+      foreach my $c (@{$component_by_seqname{$seqname}}) 
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if(
+		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+		 || 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
+		 ||
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		)
+		{
+		  my $strand = $sites{$node}->{Strand};
+		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		    {
+		      $node =~ m/(.+)?:(\d+),(.+)/;
+		      my $start = $2;
+		      $next_node =~ m/(.+)?:(\d+),(.+)/;
+		      my $end = $2;
+		      for (my $i = $start;  $i <= $end; $i++)
+			{
+			  foreach my $source (@{$sites{$node}->{Next}->{$next_node}}) {
+			    push @{$intervals{$strand}{$i}}, $source;
+			  }
+			}
+		    }
+		}
+	    }
+
+
+
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if(
+		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+		 || 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
+		 ||
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		)
+		{
+		  my $strand = $sites{$node}->{Strand};
+		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		    {
+		      $node =~ m/(.+)?:(\d+),(.+)/;
+		      my $start = $2;
+		      $next_node =~ m/(.+)?:(\d+),(.+)/;
+		      my $end = $2;
+		      my %aux;
+		      for (my $i = $start;  $i <= $end; $i++)
+			{
+			  foreach my $source (@ {$intervals{$strand}{$i}}){
+			    $source =~ /(.+)?:(.+)/;
+			    $aux{$1} = 1;
+			  }
+			}
+		      my $subset;
+		      my $first = 1;
+		      foreach my $k (sort {$a cmp $b} (keys %aux)) {
+			if($first) {
+			  $first = 0;
+			  $subset .= $k;
+			} else {
+			  $subset .= "|$k";
+			} 
+		      }
+		      push @{$exon_overlaped_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+
+		      
+		    }
+		}
+	    }
+
+
+	}
+    }
+
+  return %exon_overlaped_venn;
+}
+
+
+
+sub exon_exact_venn {
+  my %exon_venn;
+  foreach my $seqname (keys %component_by_seqname) 
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}}) 
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if(
+		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+		 || 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
+		 ||
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		)
+		{
+		  
+		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		    {
+		      my %aux;
+		      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
+			{
+			  $source =~ /(.+)?:(.+)/;
+			  $aux{$1} = 1;
+			}
+		      my $subset;
+		      my $first = 1;
+		      foreach my $k (sort {$a cmp $b} (keys %aux)) {
+			if($first) {
+			  $first = 0;
+			  $subset .= $k;
+			} else {
+			  $subset .= "|$k";
+			} 
+		      }
+		      push @{$exon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+		    }
+		}
+	    }
+	}
+    }
+  return %exon_venn;
+}
+
 
 
 
