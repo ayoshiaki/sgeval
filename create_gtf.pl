@@ -79,6 +79,8 @@ foreach my $v (@venn) {
       my @transcripts = split(/;/, $l) ;
       foreach my $transcript (@transcripts) {
 	my ($source, $geneid) = split(/:/, $transcript);
+	$geneid =~ /(.+)?,/;
+	$geneid=$1;
 	$gtf_entry_by_geneid{$source}{$geneid}->output_gtf($fhs{$source});
       }
     }

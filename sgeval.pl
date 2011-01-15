@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w 
+#!/usr/bin/perl -w
 
 use strict;
 use warnings;
@@ -10,7 +10,7 @@ use Getopt::Long;
 my @gtf_files;
 my $output_dir;
 
-GetOptions ("gtf=s{,}" => \@gtf_files, 
+GetOptions ("gtf=s{,}" => \@gtf_files,
 	    "out=s" => \$output_dir);
 
 if($#gtf_files < 0 || !defined ($output_dir)) {
@@ -25,7 +25,8 @@ my %component;
 my @sources;
 my $ref_source;
 my $first_source = 1;
-foreach my $gtf_file (@gtf_files) 
+my %gene_id_to_gtf;
+foreach my $gtf_file (@gtf_files)
   {
     my $gtf = GTF::new({gtf_filename => $gtf_file});
     my $source = $gtf_file;
@@ -36,9 +37,10 @@ foreach my $gtf_file (@gtf_files)
       $ref_source = $source;
       $first_source = 0;
     }
-    foreach my $gene (@{$gtf->genes()}) 
+    foreach my $gene (@{$gtf->genes()})
       {
-	if($gene->strand() eq "+") 
+	$gene_id_to_gtf{$gene->id()} = $gene;
+	if($gene->strand() eq "+")
 	  {
 	    process_forward($gene, \%sites, $source);
 	  } else {
@@ -46,19 +48,25 @@ foreach my $gtf_file (@gtf_files)
 	  }
       }
   }
+# build connected components
 build_components(\%component, \%sites);
 
 my %component_by_seqname;
 foreach my $entry  (sort {$a <=> $b} keys %component)
   {
     ${$component{$entry}}[0] =~ m/(.+)?:.*/;
-    push @{$component_by_seqname{$1}},$entry;	
+    push @{$component_by_seqname{$1}},$entry;
   }
 
 my $number_of_transcripts = 0;
 my %gvenn_overlaped = gene_overlap_venn();
 my %gvenn_exact = gene_exact_venn();
 my %exon_exact = exon_exact_venn();
+my %start = start_codon_venn();
+my %stop = stop_codon_venn();
+my %acceptor = acceptor_venn();
+my %donor = donor_venn();
+
 my %exon_overlaped = exon_overlaped_venn();
 my %nucleotide = nucleotide_venn();
 
@@ -66,6 +74,10 @@ generate_result("gene_overlaped", \%gvenn_overlaped);
 generate_result("gene_exact", \%gvenn_exact);
 generate_result("exon_exact", \%exon_exact);
 generate_result("exon_overlaped", \%exon_overlaped);
+generate_result("start", \%start);
+generate_result("stop", \%stop);
+generate_result("acceptor", \%acceptor);
+generate_result("donor", \%donor);
 generate_result("nucleotide", \%nucleotide);
 
 
@@ -91,7 +103,7 @@ sub generate_result {
     if($source eq $ref_source) {
       next;
     }
-    foreach my $subset (keys %venn) 
+    foreach my $subset (keys %venn)
       {
 	my $count = scalar(@{$venn{$subset}});
 	my $a = ($subset =~ /^$source$/) || ($subset =~ /^$source(\|)/)|| ($subset =~ /(\|)$source(\|)/) || ($subset =~ /(|)$source$/);
@@ -111,32 +123,32 @@ sub generate_result {
     print OUTPUT "//\n";
   }
   close(OUTPUT);
-  
+
 }
 
 
 
-sub gene_exact_venn { 
+sub gene_exact_venn {
   my %subsets;
   my %gvenn;
-  foreach my $seqname (keys %component_by_seqname) 
+  foreach my $seqname (keys %component_by_seqname)
     {
-      foreach my $component (@{$component_by_seqname{$seqname}}) 
+      foreach my $component (@{$component_by_seqname{$seqname}})
 	{
 	  my %recticulate;
 	  foreach my $node (@{$component{$component}})
 	    {
 	      my $label = "";
 	      my $first = 1;
-	      foreach my $next_node  (keys %{$sites{$node}->{Next}}) 
+	      foreach my $next_node  (keys %{$sites{$node}->{Next}})
 		{
 		  my @transcripts = @{$sites{$node}->{Next}->{$next_node}};
-		  foreach my $source  (sort {$a cmp $b} (@transcripts)) 
+		  foreach my $source  (sort {$a cmp $b} (@transcripts))
 		    {
 		      if($first ) {
 			$label .= "$source";
 			$first = 0;
-		      } 
+		      }
 		      else {
 			$label .= ";$source";
 		      }
@@ -155,7 +167,17 @@ sub gene_exact_venn {
 	      my $from = $sorted[$k];
 	      if(scalar (@{$recticulate{$from}->{From}}) <= 1) {
 		my $subsets = build_subset_string($from);
-		push @{$gvenn{$subsets}}, $from;
+		my $str = "";
+		my $nexon = 0;
+		foreach my $source (split(";", $from))
+		  {
+		    $source =~ m/(.+)?:(.+)/;
+		    $nexon = count_exon($2);
+		    $str .= "$1:$2,$nexon;";
+		  }
+
+
+		push @{$gvenn{$subsets}}, $str;
 		%recticulate = () ;
 		foreach my $el (@sorted)
 		  {
@@ -168,7 +190,7 @@ sub gene_exact_venn {
 		    if(!$el =~/^\s*$/){
 		      $recticulate{$el} = {};
 		    }
-		    
+
 		  }
 		%recticulate = %{build_recticulate(\%recticulate)};
 		@sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
@@ -193,11 +215,11 @@ sub build_subset_string {
   my $firsttime = 1;
   my $subsets = "";
   my %aux = ();
-  foreach my $set (sort {$a cmp $b} (@sets)) 
+  foreach my $set (sort {$a cmp $b} (@sets))
     {
       if($set =~/(.+)?:(.+)/) {
 	if(defined $aux{$1}) {
-	  next; 
+	  next;
 	}
 	$aux{$1} = 1;
 	if($firsttime) {
@@ -210,12 +232,12 @@ sub build_subset_string {
     }
   return $subsets;
 }
-sub gene_overlap_venn { 
+sub gene_overlap_venn {
   my %subsets;
   my %gvenn;
-  foreach my $seqname (keys %component_by_seqname) 
+  foreach my $seqname (keys %component_by_seqname)
     {
-      foreach my $c (@{$component_by_seqname{$seqname}}) 
+      foreach my $c (@{$component_by_seqname{$seqname}})
 	{
 	  my %aux;
 	  my $list ="";
@@ -227,11 +249,13 @@ sub gene_overlap_venn {
 	    }
 	  }
 	  foreach my $x (keys %aux) {
+	    $x =~ m/(.+)?:(.+)/;
+	    my $nexon = count_exon($2);
 	    if($first) {
-	      $list .= "$x";
+	      $list .= "$x,$nexon";
 	      $first = 0;
 	    } else{
-	      $list .= ";$x";
+	      $list .= ";$x,$nexon";
 	    }
 	  }
 	  my $subset = build_subset_string($list);
@@ -243,8 +267,15 @@ sub gene_overlap_venn {
 }
 
 
-
-
+sub count_exon {
+  my $id = shift;
+  my $gene = $gene_id_to_gtf{$id};
+  foreach my $tx (@{$gene->transcripts()})
+    {
+      return scalar(@{$tx->cds()});
+    }
+   return 0;
+}
 
 sub build_recticulate {
   my $ref = shift;
@@ -266,7 +297,7 @@ sub build_recticulate {
 	  $is_subset = 0;
 	}
       }
-      if($is_subset) 
+      if($is_subset)
 	{
 	  push @{$recticulate{$from}->{Next}}, $to;
 	  push @{$recticulate{$to}->{From}}, $from;
@@ -280,26 +311,26 @@ sub build_recticulate {
 sub nucleotide_venn {
   my %nucleotide_venn;
 
-  foreach my $seqname (keys %component_by_seqname) 
+  foreach my $seqname (keys %component_by_seqname)
     {
       my %intervals;
 
-      foreach my $c (@{$component_by_seqname{$seqname}}) 
+      foreach my $c (@{$component_by_seqname{$seqname}})
 	{
 	  foreach my $node (@{$component{$c}})
 	    {
 	      if(
 		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
-		 || 
-		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
 		 ||
-		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
 		 ||
-		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
 		)
 		{
 		  my $strand = $sites{$node}->{Strand};
-		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		  foreach my $next_node (keys %{$sites{$node}->{Next}})
 		    {
 		      $node =~ m/(.+)?:(\d+),(.+)/;
 		      my $start = $2;
@@ -315,10 +346,10 @@ sub nucleotide_venn {
 		}
 	    }
 	  foreach my $strand (keys %intervals) {
-	    foreach my $i (sort {$a <=> $b} (keys %{$intervals{$strand}})) 
+	    foreach my $i (sort {$a <=> $b} (keys %{$intervals{$strand}}))
 	      {
 		my %aux;
-		foreach my $source (@{$intervals{$strand}{$i}}) 
+		foreach my $source (@{$intervals{$strand}{$i}})
 		  {
 		    $source =~ /(.+)?:(.+)/;
 		    $aux{$1} = 1;
@@ -331,9 +362,9 @@ sub nucleotide_venn {
 		    $subset .= $k;
 		  } else {
 		    $subset .= "|$k";
-		  } 
+		  }
 		}
-		
+
 		push @{$nucleotide_venn{$subset}}, "$seqname,$strand:$i";
 	      }
 	  }
@@ -345,26 +376,26 @@ sub nucleotide_venn {
 
 sub exon_overlaped_venn {
   my %exon_overlaped_venn;
-  foreach my $seqname (keys %component_by_seqname) 
+  foreach my $seqname (keys %component_by_seqname)
     {
       my %intervals;
 
-      foreach my $c (@{$component_by_seqname{$seqname}}) 
+      foreach my $c (@{$component_by_seqname{$seqname}})
 	{
 	  foreach my $node (@{$component{$c}})
 	    {
 	      if(
 		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
-		 || 
-		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
 		 ||
-		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
 		 ||
-		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
 		)
 		{
 		  my $strand = $sites{$node}->{Strand};
-		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		  foreach my $next_node (keys %{$sites{$node}->{Next}})
 		    {
 		      $node =~ m/(.+)?:(\d+),(.+)/;
 		      my $start = $2;
@@ -386,16 +417,16 @@ sub exon_overlaped_venn {
 	    {
 	      if(
 		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
-		 || 
-		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
 		 ||
-		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
 		 ||
-		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
 		)
 		{
 		  my $strand = $sites{$node}->{Strand};
-		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+		  foreach my $next_node (keys %{$sites{$node}->{Next}})
 		    {
 		      $node =~ m/(.+)?:(\d+),(.+)/;
 		      my $start = $2;
@@ -417,11 +448,43 @@ sub exon_overlaped_venn {
 			  $subset .= $k;
 			} else {
 			  $subset .= "|$k";
-			} 
+			}
 		      }
-		      push @{$exon_overlaped_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+		      my $type;
+		      if($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+			{
+			  $type = "initial";
+			  if ($next_node =~/stop/){
+			    $type = "single";
+			  }
 
-		      
+			}
+		      elsif ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
+			{
+			  $type = "internal";
+			  if($next_node =~ /stop/) {
+			    $type = "final";
+			  }
+			}
+		      elsif ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+			{
+			  $type = "final";
+			  if($next_node =~ /start/) {
+			    $type = "single";
+			  }
+			}
+		      elsif ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
+			{
+			  $type = "internal";
+			  if($next_node =~ /start/) {
+			    $type = "initial";
+			  }
+			}
+
+		      push @{$exon_overlaped_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+
+
+
 		    }
 		}
 	    }
@@ -437,24 +500,24 @@ sub exon_overlaped_venn {
 
 sub exon_exact_venn {
   my %exon_venn;
-  foreach my $seqname (keys %component_by_seqname) 
+  foreach my $seqname (keys %component_by_seqname)
     {
-      foreach my $c (@{$component_by_seqname{$seqname}}) 
+      foreach my $c (@{$component_by_seqname{$seqname}})
 	{
 	  foreach my $node (@{$component{$c}})
 	    {
 	      if(
 		 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
-		 || 
-		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+") 
 		 ||
-		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
 		 ||
-		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-") 
+		 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+		 ||
+		 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
 		)
 		{
-		  
-		  foreach my $next_node (keys %{$sites{$node}->{Next}}) 
+
+		  foreach my $next_node (keys %{$sites{$node}->{Next}})
 		    {
 		      my %aux;
 		      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
@@ -470,9 +533,41 @@ sub exon_exact_venn {
 			  $subset .= $k;
 			} else {
 			  $subset .= "|$k";
-			} 
+			}
 		      }
-		      push @{$exon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+		      my $type;
+		      if($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+			{
+			  $type = "initial";
+			  if ($next_node =~/stop/){
+			    $type = "single";
+			  }
+
+			}
+		      elsif ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
+			{
+			  $type = "internal";
+			  if($next_node =~ /stop/) {
+			    $type = "final";
+			  }
+			}
+		      elsif ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+			{
+			  $type = "final";
+			  if($next_node =~ /start/) {
+			    $type = "single";
+			  }
+			}
+		      elsif ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
+			{
+			  $type = "internal";
+			  if($next_node =~ /start/) {
+			    $type = "initial";
+			  }
+			}
+
+		      push @{$exon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+
 		    }
 		}
 	    }
@@ -484,41 +579,208 @@ sub exon_exact_venn {
 
 
 
+
+
+sub donor_venn {
+  my %donor_venn;
+  foreach my $seqname (keys %component_by_seqname)
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}})
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if($node =~ /donor/)
+		{
+
+		  my %aux;
+		  foreach my $source (@{$sites{$node}->{Source}})
+		    {
+		      $source =~ /(.+)?:(.+)/;
+		      $aux{$1} = 1;
+		    }
+
+		  my $subset;
+		  my $first = 1;
+		  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+		    if($first) {
+		      $first = 0;
+		      $subset .= $k;
+		    } else {
+		      $subset .= "|$k";
+		    }
+		  }
+
+		  push @{$donor_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+
+		}
+	    }
+	}
+    }
+  return %donor_venn;
+
+}
+
+
+
+
+sub acceptor_venn {
+  my %acceptor_venn;
+  foreach my $seqname (keys %component_by_seqname)
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}})
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if($node =~ /acceptor/)
+		{
+
+		  my %aux;
+		  foreach my $source (@{$sites{$node}->{Source}})
+		    {
+		      $source =~ /(.+)?:(.+)/;
+		      $aux{$1} = 1;
+		    }
+
+		  my $subset;
+		  my $first = 1;
+		  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+		    if($first) {
+		      $first = 0;
+		      $subset .= $k;
+		    } else {
+		      $subset .= "|$k";
+		    }
+		  }
+
+		  push @{$acceptor_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+
+		}
+	    }
+	}
+    }
+  return %acceptor_venn;
+
+}
+
+
+
+sub stop_codon_venn {
+  my %stop_codon_venn;
+  foreach my $seqname (keys %component_by_seqname)
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}})
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if($node =~ /stop/)
+		{
+
+		  my %aux;
+		  foreach my $source (@{$sites{$node}->{Source}})
+		    {
+		      $source =~ /(.+)?:(.+)/;
+		      $aux{$1} = 1;
+		    }
+
+		  my $subset;
+		  my $first = 1;
+		  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+		    if($first) {
+		      $first = 0;
+		      $subset .= $k;
+		    } else {
+		      $subset .= "|$k";
+		    }
+		  }
+
+		  push @{$stop_codon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+
+		}
+	    }
+	}
+    }
+  return %stop_codon_venn;
+
+}
+
+
+sub start_codon_venn {
+  my %start_codon_venn;
+  foreach my $seqname (keys %component_by_seqname)
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}})
+	{
+	  foreach my $node (@{$component{$c}})
+	    {
+	      if($node =~ /start/)
+		{
+
+		  my %aux;
+		  foreach my $source (@{$sites{$node}->{Source}})
+		    {
+		      $source =~ /(.+)?:(.+)/;
+		      $aux{$1} = 1;
+		    }
+
+		  my $subset;
+		  my $first = 1;
+		  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+		    if($first) {
+		      $first = 0;
+		      $subset .= $k;
+		    } else {
+		      $subset .= "|$k";
+		    }
+		  }
+
+		  push @{$start_codon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+
+		}
+	    }
+	}
+    }
+  return %start_codon_venn;
+
+}
+
+
+
+
 sub process_forward {
     my $gene = shift;
     my $sites_r = shift;
     my $gtf_filename = shift;
     my $geneid = $gene->id();
-    foreach my $tx (@{$gene->transcripts()}) 
+    foreach my $tx (@{$gene->transcripts()})
     {
 	my @start_codons = @{$tx->start_codons()};
 	my @stop_codons = @{$tx->stop_codons()};
 	my $last_right_site;
-	foreach my $cds (@{$tx->cds()} ) 
+	foreach my $cds (@{$tx->cds()} )
 	{
 	    my $left_site;
 	    my $right_site;
 	    my $is_start_codon = 0;
-	    foreach my $start_codon (@start_codons) 
+	    foreach my $start_codon (@start_codons)
 	    {
-		if($cds->start() ==  $start_codon->start()) 
+		if($cds->start() ==  $start_codon->start())
 		{
 		    $is_start_codon = 1;
 		    last;
 		}
 	    }
 	    my $is_stop_codon = 0;
-	    foreach my $stop_codon (@stop_codons) 
+	    foreach my $stop_codon (@stop_codons)
 	    {
-		if(($cds->stop() + 1) ==  $stop_codon->start()) 
+		if(($cds->stop() + 1) ==  $stop_codon->start())
 		{
 		    $is_stop_codon = 1;
 		    last;
 		}
 	    }
-	    
+
 	    if($is_start_codon) {
-		$left_site = 
+		$left_site =
 		{
 		    SeqName => $gene->seqname(),
 		    Position => $cds->start(),
@@ -527,9 +789,9 @@ sub process_forward {
 		    Strand => "+"
 		};
 	    } else {
-		$left_site = 
+		$left_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->start(),
 		    Type => "acceptor",
 		    Frame => $cds->frame(),
@@ -537,20 +799,20 @@ sub process_forward {
 		}
 	    }
 	    if($is_stop_codon) {
-		$right_site = 
+		$right_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->stop(),
 		    Type => "stop_codon",
 		    Frame => $cds->frame(),
 		    Strand => "+"
 		};
 	    } else {
-		$right_site = 
+		$right_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->stop(),
-		    Type => "donor", 
+		    Type => "donor",
 		    Frame => $cds->frame(),
 		    Strand => "+"
 		};
@@ -558,7 +820,7 @@ sub process_forward {
 	    my $source = $gtf_filename;
 	    $left_site = add_site($left_site, $sites_r, $source, $gene->id());
 	    $right_site = add_site($right_site, $sites_r, $source, $gene->id());
-	    if(defined $last_right_site) 
+	    if(defined $last_right_site)
 	    {
 		push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $gene->id();
 		push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $gene->id();
@@ -575,36 +837,36 @@ sub process_reverse {
     my $gene = shift;
     my $sites_r = shift;
     my $gtf_filename = shift;
-    foreach my $tx (@{$gene->transcripts()}) 
+    foreach my $tx (@{$gene->transcripts()})
     {
 	my @start_codons = @{$tx->start_codons()};
 	my @stop_codons = @{$tx->stop_codons()};
 	my $last_right_site;
-	foreach my $cds (@{$tx->cds()} ) 
+	foreach my $cds (@{$tx->cds()} )
 	{
 	    my $left_site;
 	    my $right_site;
 	    my $is_start_codon = 0;
-	    foreach my $start_codon (@start_codons) 
+	    foreach my $start_codon (@start_codons)
 	    {
-		if($cds->stop() ==  $start_codon->stop()) 
+		if($cds->stop() ==  $start_codon->stop())
 		{
 		    $is_start_codon = 1;
 		    last;
 		}
 	    }
 	    my $is_stop_codon = 0;
-	    foreach my $stop_codon (@stop_codons) 
+	    foreach my $stop_codon (@stop_codons)
 	    {
-		if(($cds->start() - 1) ==  $stop_codon->stop()) 
+		if(($cds->start() - 1) ==  $stop_codon->stop())
 		{
 		    $is_stop_codon = 1;
 		    last;
 		}
 	    }
-	    
+
 	    if($is_start_codon) {
-		$right_site = 
+		$right_site =
 		{
 		    SeqName => $gene->seqname(),
 		    Position => $cds->stop(),
@@ -613,9 +875,9 @@ sub process_reverse {
 		    Strand => "-"
 		};
 	    } else {
-		$right_site = 
+		$right_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->stop(),
 		    Type => "acceptor",
 		    Frame => $cds->frame(),
@@ -623,20 +885,20 @@ sub process_reverse {
 		}
 	    }
 	    if($is_stop_codon) {
-		$left_site = 
+		$left_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->start(),
 		    Type => "stop_codon",
 		    Frame => $cds->frame(),
 		    Strand => "-"
 		};
 	    } else {
-		$left_site = 
+		$left_site =
 		{
-		    SeqName =>$gene->seqname(), 
+		    SeqName =>$gene->seqname(),
 		    Position => $cds->start(),
-		    Type => "donor", 
+		    Type => "donor",
 		    Frame => $cds->frame(),
 		    Strand => "-"
 		};
@@ -644,7 +906,7 @@ sub process_reverse {
 	    my $source = $gtf_filename;
 	    $left_site = add_site($left_site, $sites_r, $source, $gene->id());
 	    $right_site = add_site($right_site, $sites_r, $source, $gene->id());
-	    if(defined $last_right_site) 
+	    if(defined $last_right_site)
 	    {
 		push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":".$gene->id();
 		push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $gene->id();
@@ -662,7 +924,7 @@ sub add_site {
     my $gene_source = shift;
     my $gene_id = shift;
     my $key = get_key_from_site($site);
-    if(! defined $sites_r-> {$key}) 
+    if(! defined $sites_r-> {$key})
     {
 	$site = $sites_r->{$key} = $site;
     } else {
@@ -686,16 +948,16 @@ sub build_components {
   my @nodes = keys (%{$sites_ref});
   my %marked;
   foreach my $n (@nodes) {
-    if (defined $marked{$n} ) 
+    if (defined $marked{$n} )
       {
 	next;
       }
-    
-    my @queue; 
+
+    my @queue;
     push @queue, ($n);
     push @{$component_ref->{$id}},$n;
     $marked{$n} = 1;
-    while (scalar (@queue) > 0) 
+    while (scalar (@queue) > 0)
       {
 	my $node = pop @queue;
 	my @edges = (keys %{$sites_ref->{$node}->{Next}});
