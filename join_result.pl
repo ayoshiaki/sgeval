@@ -59,14 +59,17 @@ foreach my $file (@files)
               {
                 last;
               }
-            $r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tSpecificity\t(\d+)\n\tSensitivity\t(\d+)\n\tF\t(\d+).*/;
-            push @{$results{$file}{$1}{total}}, $2;
-            push @{$results{$file}{$1}{TP}}, $3;
-            push @{$results{$file}{$1}{FP}}, $4;
-            push @{$results{$file}{$1}{FN}}, $5;
-            push @{$results{$file}{$1}{Specificity}}, $6;
-            push @{$results{$file}{$1}{Sensitivity}}, $7;
-            push @{$results{$file}{$1}{F}}, $8;
+            print $r."\n";
+            if($r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tSpecificity\t(\d+\.\d+)\n\tSensitivity\t(\d+\.\d+)\n\tF\t(\d+\.\d+).*/){
+              print "MATCH: <$1> <$2> <$3> <$4> <$5> <$6> <$7> <$8> \n";
+              push @{$results{$file}{$1}{total}}, $2;
+              push @{$results{$file}{$1}{TP}}, $3;
+              push @{$results{$file}{$1}{FP}}, $4;
+              push @{$results{$file}{$1}{FN}}, $5;
+              push @{$results{$file}{$1}{Specificity}}, $6;
+              push @{$results{$file}{$1}{Sensitivity}}, $7;
+              push @{$results{$file}{$1}{F}}, $8;
+            }
           }
       }
   }
@@ -94,7 +97,7 @@ foreach my $file (keys %results)
         my $var_sn = var($results{$file}{$entry}{Sensitivity});
 
         my $total = mean ($results{$file}{$entry}{total});
-        my $var_total = var (@{$results{$file}{$entry}{total}});
+        my $var_total = var ($results{$file}{$entry}{total});
 
         my $F = mean ($results{$file}{$entry}{F});
         my $var_F = var ($results{$file}{$entry}{F});
@@ -103,7 +106,7 @@ foreach my $file (keys %results)
         print OUT "\tTP\t$tp\t$var_tp\n";
         print OUT "\tFP\t$fp\t$var_fp\n";
         print OUT "\tFN\t$fn\t$var_fn\n";
-        printf OUT ("\tSpecificity\t%.2f\t%.2f\n\tSensitivity\t%.2f\t%.2f\n\tF\t%.2f\t%.2f", $sp,$var_sp, $sn, $var_sn, $F, $var_F);
+        printf OUT ("\tSpecificity\t%.2f\t%.2f\n\tSensitivity\t%.2f\t%.2f\n\tF\t%.2f\t%.2f\n", $sp,$var_sp, $sn, $var_sn, $F, $var_F);
         print OUT "//\n";
       }
     close(OUT);
