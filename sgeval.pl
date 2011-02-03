@@ -25,7 +25,7 @@ my %component;
 my @sources;
 my $ref_source;
 my $first_source = 1;
-my %gene_id_to_gtf;
+my %transcripts;
 foreach my $gtf_file (@gtf_files)
   {
     my $gtf = GTF::new({gtf_filename => $gtf_file});
@@ -39,7 +39,11 @@ foreach my $gtf_file (@gtf_files)
     }
     foreach my $gene (@{$gtf->genes()})
       {
-        $gene_id_to_gtf{$gene->id()} = $gene;
+        foreach my $tx (@{$gene->transcripts})
+          {
+            $transcripts{$tx->id} = $tx;
+          }
+
         if($gene->strand() eq "+")
           {
             process_forward($gene, \%sites, $source);
@@ -121,7 +125,10 @@ sub generate_result {
       }
     my $sp = (100.0*($tp/($tp + $fp)));
     my $sn = (100.0*($tp/($tp + $fn)));
-    my $f = 2 * $sp * $sn / ($sp + $sn);
+    my $f = 0;
+    if(($sp + $sn) != 0) {
+      $f = 2 * $sp * $sn / ($sp + $sn);
+    }
     print OUTPUT $source."\t".($tp+$fp)."\n";
     print OUTPUT "\tTP\t$tp\n\tFP\t$fp\n\tFN\t$fn\n";
     printf OUTPUT ("\tSpecificity\t%.2f\n\tSensitivity\t%.2f\n", (100.0*($tp/($tp + $fp))),(100.0*($tp/($tp + $fn))));
@@ -166,9 +173,11 @@ sub gene_exact_venn {
 
           %recticulate = %{build_recticulate(\%recticulate)};
 
+
+
           my @sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
           my $k = 0;
-          while ($k < scalar(@sorted) && scalar(@sorted) > 0)
+          while (($k < scalar(@sorted)) && (scalar(@sorted) > 0))
             {
               my $from = $sorted[$k];
               if(scalar (@{$recticulate{$from}->{From}}) <= 1) {
@@ -181,7 +190,6 @@ sub gene_exact_venn {
                     $nexon = count_exon($2);
                     $str .= "$1:$2,$nexon;";
                   }
-
 
                 push @{$gvenn{$subsets}}, $str;
                 %recticulate = () ;
@@ -198,7 +206,11 @@ sub gene_exact_venn {
                     }
 
                   }
+                print Dumper [%recticulate];
                 %recticulate = %{build_recticulate(\%recticulate)};
+                print Dumper [%recticulate];
+
+
                 @sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
                 $k = 0;
               } else {
@@ -206,7 +218,10 @@ sub gene_exact_venn {
               }
             }
         }
+
     }
+
+  print Dumper [%gvenn];
   return %gvenn;
 }
 
@@ -278,11 +293,8 @@ sub gene_overlap_venn {
 sub count_exon {
   my $id = shift;
   if($id) {
-    my $gene = $gene_id_to_gtf{$id};
-    foreach my $tx (@{$gene->transcripts()})
-      {
-        return scalar(@{$tx->cds()});
-      }
+    my $tx = $transcripts{$id};
+    return scalar(@{$tx->cds()});
   }
     return 0;
 }
@@ -810,7 +822,7 @@ sub process_forward {
     my $gene = shift;
     my $sites_r = shift;
     my $gtf_filename = shift;
-    my $geneid = $gene->id();
+#    my $geneid = $gene->id();
     foreach my $tx (@{$gene->transcripts()})
     {
         my @start_codons = @{$tx->start_codons()};
@@ -878,15 +890,15 @@ sub process_forward {
                 };
             }
             my $source = $gtf_filename;
-            $left_site = add_site($left_site, $sites_r, $source, $gene->id());
-            $right_site = add_site($right_site, $sites_r, $source, $gene->id());
+            $left_site = add_site($left_site, $sites_r, $source, $tx->id);
+            $right_site = add_site($right_site, $sites_r, $source, $tx->id);
             if(defined $last_right_site)
             {
-                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $gene->id();
-                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $gene->id();
+                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
+                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
             }
-            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $gene->id();
-            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":". $gene->id();
+            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
+            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
             $last_right_site = $right_site;
         }
     }
@@ -964,15 +976,15 @@ sub process_reverse {
                 };
             }
             my $source = $gtf_filename;
-            $left_site = add_site($left_site, $sites_r, $source, $gene->id());
-            $right_site = add_site($right_site, $sites_r, $source, $gene->id());
+            $left_site = add_site($left_site, $sites_r, $source, $tx->id);
+            $right_site = add_site($right_site, $sites_r, $source, $tx->id);
             if(defined $last_right_site)
             {
-                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":".$gene->id();
-                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $gene->id();
+                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":".$tx->id;
+                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
             }
-            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $gene->id();
-            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":".$gene->id();
+            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
+            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":".$tx->id;
             $last_right_site = $right_site;
         }
     }
