@@ -33,6 +33,7 @@ foreach my $gtf_file (@gtf_files)
     $source =~ s/\.gtf//g;
     $source =~ s%.+/(.+)$%$1%g;
     push @sources, $source;
+
     if($first_source == 1) {
       $ref_source = $source;
       $first_source = 0;
@@ -186,9 +187,14 @@ sub gene_exact_venn {
                 my $nexon = 0;
                 foreach my $source (split(";", $from))
                   {
-                    $source =~ m/(.+)?:(.+)/;
-                    $nexon = count_exon($2);
-                    $str .= "$1:$2,$nexon;";
+		      
+		      if($source =~ m/(.+)?:(.+)/)
+		      {
+			  $nexon = count_exon($2);
+			  $str .= "$1:$2,$nexon;";
+		      } else {
+			  print STDERR "Something wrong: $from\n";
+		      }
                   }
 
                 push @{$gvenn{$subsets}}, $str;
@@ -196,11 +202,15 @@ sub gene_exact_venn {
                 foreach my $el (@sorted)
                   {
                     my @remove_subset = split(";", $from);
+		    
+
                     foreach my $xx (@remove_subset) {
-                      $el =~ s/;$xx//g;
-                      $el =~ s/$xx;//g;
-                      $el =~ s/$xx//g;
+                      $el =~ s/;$xx$//g;
+                      $el =~ s/^$xx;//g;
+                      $el =~ s/;$xx;/;/g;
+                      $el =~ s/^$xx$//g;
                     }
+
                     if(!$el =~/^\s*$/){
                       $recticulate{$el} = {};
                     }
@@ -889,9 +899,11 @@ sub process_forward {
             my $source = $gtf_filename;
             $left_site = add_site($left_site, $sites_r, $source, $tx->id);
             $right_site = add_site($right_site, $sites_r, $source, $tx->id);
+
             if(defined $last_right_site)
             {
-                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
+		
+		push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
                 push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
             }
             push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
