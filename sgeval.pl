@@ -141,15 +141,18 @@ sub generate_result {
 }
 
 
-
 sub gene_exact_venn {
   my %subsets;
   my %gvenn;
+  my %cluster;
+
   foreach my $seqname (keys %component_by_seqname)
     {
+      my %supported_by;
+      my %transcript_name;
+
       foreach my $component (@{$component_by_seqname{$seqname}})
         {
-          my %recticulate;
           foreach my $node (@{$component{$component}})
             {
               my $label = "";
@@ -159,6 +162,7 @@ sub gene_exact_venn {
                   my @transcripts = @{$sites{$node}->{Next}->{$next_node}};
                   foreach my $source  (sort {$a cmp $b} (@transcripts))
                     {
+                      $transcript_name{$source} = 1;
                       if($first ) {
                         $label .= "$source";
                         $first = 0;
@@ -167,66 +171,43 @@ sub gene_exact_venn {
                         $label .= ";$source";
                       }
                     }
-                  $recticulate{$label} = {};
+                  $supported_by{$label} = 1;
                 }
             }
 
-
-          %recticulate = %{build_recticulate(\%recticulate)};
-
-
-
-          my @sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
-          my $k = 0;
-          while (($k < scalar(@sorted)) && (scalar(@sorted) > 0))
-            {
-              my $from = $sorted[$k];
-              if(scalar (@{$recticulate{$from}->{From}}) <= 1) {
-                my $subsets = build_subset_string($from);
-                my $str = "";
-                my $nexon = 0;
-                foreach my $source (split(";", $from))
-                  {
-		      
-		      if($source =~ m/(.+)?:(.+)/)
-		      {
-			  $nexon = count_exon($2);
-			  $str .= "$1:$2,$nexon;";
-		      } else {
-			  print STDERR "Something wrong: $from\n";
-		      }
-                  }
-
-                push @{$gvenn{$subsets}}, $str;
-                %recticulate = () ;
-                foreach my $el (@sorted)
-                  {
-                    my @remove_subset = split(";", $from);
-		    
-
-                    foreach my $xx (@remove_subset) {
-                      $el =~ s/;$xx$//g;
-                      $el =~ s/^$xx;//g;
-                      $el =~ s/;$xx;/;/g;
-                      $el =~ s/^$xx$//g;
-                    }
-
-                    if(!$el =~/^\s*$/){
-                      $recticulate{$el} = {};
-                    }
-
-                  }
-                %recticulate = %{build_recticulate(\%recticulate)};
-
-
-                @sorted= sort { my @aa = split(";", $a); my @bb = split(";", $b); @aa <=> @bb } keys %recticulate ;
-                $k = 0;
-              } else {
-                $k++;
-              }
-            }
         }
 
+
+      foreach my $tx_name (keys %transcript_name)
+        {
+          my $label_str;
+          foreach my $label ((sort {$a cmp $b} (keys %supported_by))) {
+            if(($label =~ m/$tx_name;/) || ($label =~ m/$tx_name$/) )
+              {
+                $label_str .= "<".$label.">";
+              }
+          }
+          push @{$cluster{$label_str}}, $tx_name;
+        }
+    }
+
+  foreach my $key ( keys %cluster)
+    {
+      my $first = 1;
+      my $list = "";
+      foreach my $x (@{$cluster{$key}}) {
+        if($x =~ m/(.+)?:(.+)/){
+          my $nexon = count_exon($2);
+          if($first) {
+            $list .= "$x,$nexon";
+            $first = 0;
+          } else{
+            $list .= ";$x,$nexon";
+          }
+        }
+      }
+      my $subset = build_subset_string($list);
+      push @{$gvenn{$subset}}, $list;
     }
 
   return %gvenn;
@@ -306,35 +287,6 @@ sub count_exon {
     return 0;
 }
 
-sub build_recticulate {
-  my $ref = shift;
-  my %recticulate = %{$ref};
-  foreach my $from (keys %recticulate) {
-    foreach my $to (keys %recticulate) {
-      my @firstset = split(";", $from);
-      my @secondset = split(";", $to);
-      my $is_subset = 1;
-      foreach my $el (@firstset)  {
-        my $found = 0;
-        foreach my $el2 (@secondset) {
-          if($el eq $el2) {
-            $found = 1;
-            last;
-          }
-        }
-        if (!$found) {
-          $is_subset = 0;
-        }
-      }
-      if($is_subset)
-        {
-          push @{$recticulate{$from}->{Next}}, $to;
-          push @{$recticulate{$to}->{From}}, $from;
-        }
-    }
-  }
-  return \%recticulate;
-}
 
 
 sub nucleotide_venn {
@@ -902,8 +854,8 @@ sub process_forward {
 
             if(defined $last_right_site)
             {
-		
-		push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
+
+                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
                 push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
             }
             push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
