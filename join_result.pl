@@ -59,9 +59,7 @@ foreach my $file (@files)
               {
                 last;
               }
-            print $r."\n";
             if($r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tSpecificity\t(\d+\.\d+)\n\tSensitivity\t(\d+\.\d+)\n\tF\t(\d+\.\d+).*/){
-              print "MATCH: <$1> <$2> <$3> <$4> <$5> <$6> <$7> <$8> \n";
               push @{$results{$file}{$1}{total}}, $2;
               push @{$results{$file}{$1}{TP}}, $3;
               push @{$results{$file}{$1}{FP}}, $4;
@@ -83,30 +81,48 @@ foreach my $file (keys %results)
 
         my $tp = mean($results{$file}{$entry}{TP});
         my $var_tp = var($results{$file}{$entry}{TP});
+        my $min_tp = min($results{$file}{$entry}{TP});
+        my $max_tp = max($results{$file}{$entry}{TP});
 
         my $fp = mean($results{$file}{$entry}{FP});
         my $var_fp = var($results{$file}{$entry}{FP});
+        my $min_fp = min($results{$file}{$entry}{FP});
+        my $max_fp = max($results{$file}{$entry}{FP});
 
         my $fn = mean($results{$file}{$entry}{FN});
         my $var_fn = var($results{$file}{$entry}{FN});
+        my $min_fn = min($results{$file}{$entry}{FN});
+        my $max_fn = max($results{$file}{$entry}{FN});
 
         my $sp = mean ($results{$file}{$entry}{Specificity});
         my $var_sp = var($results{$file}{$entry}{Specificity});
+        my $min_sp = min($results{$file}{$entry}{Specificity});
+        my $max_sp = max($results{$file}{$entry}{Specificity});
 
         my $sn = mean($results{$file}{$entry}{Sensitivity});
         my $var_sn = var($results{$file}{$entry}{Sensitivity});
+        my $min_sn = min($results{$file}{$entry}{Sensitivity});
+        my $max_sn = max($results{$file}{$entry}{Sensitivity});
 
         my $total = mean ($results{$file}{$entry}{total});
         my $var_total = var ($results{$file}{$entry}{total});
+        my $min_total = min ($results{$file}{$entry}{total});
+        my $max_total = max ($results{$file}{$entry}{total});
+
 
         my $F = mean ($results{$file}{$entry}{F});
         my $var_F = var ($results{$file}{$entry}{F});
+        my $min_F = min ($results{$file}{$entry}{F});
+        my $max_F = max ($results{$file}{$entry}{F});
 
-        print OUT "$entry\t$total\t$var_total\n";
-        print OUT "\tTP\t$tp\t$var_tp\n";
-        print OUT "\tFP\t$fp\t$var_fp\n";
-        print OUT "\tFN\t$fn\t$var_fn\n";
-        printf OUT ("\tSpecificity\t%.2f\t%.2f\n\tSensitivity\t%.2f\t%.2f\n\tF\t%.2f\t%.2f\n", $sp,$var_sp, $sn, $var_sn, $F, $var_F);
+        print OUT "$entry\n";
+#        printf OUT ("\t  \tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $total, $var_total, $min_total, $max_total);
+ #       printf OUT ("\tTP\tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $tp,$var_tp, $min_tp, $max_tp);
+  #      printf OUT ("\tFP\tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $fp, $var_fp, $min_fp, $max_fp);
+   #     printf OUT ("\tFN\tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $fn, $var_fn, $min_fn, $max_fn);
+        printf OUT ("\tSP\tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $sp, $var_sp, $min_sp, $max_sp);
+        printf OUT ("\tSN\tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $sn, $var_sn, $min_sn, $max_sn);
+        printf OUT ("\tF \tmean:%.2f\tvar:%.2f\tmin:%.2f\tmax:%.2f\n", $F, $var_F, $min_F, $max_F);
         print OUT "//\n";
       }
     close(OUT);
@@ -140,4 +156,30 @@ sub mean {
     $total += $v;
   }
   return $total/($#values + 1);
+}
+
+sub min {
+  my $ref = shift;
+  my @values = @{$ref};
+  my $total = 0;
+  my $min = 1e1000;
+  foreach my $v (@values){
+    if($min > $v){
+      $min = $v;
+    }
+  }
+  return $min;
+}
+
+sub max {
+  my $ref = shift;
+  my @values = @{$ref};
+  my $total = 0;
+  my $max = -1e1000;
+  foreach my $v (@values){
+    if($max < $v){
+      $max = $v;
+    }
+  }
+  return $max;
 }
