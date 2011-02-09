@@ -54,26 +54,29 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
 
 
 my %genes = make_gene_cluster();
-my %transcript_to_freq;
-foreach my $entry (keys %genes) {
-  foreach my $gene (@{$genes{$entry}})
-    {
-      my ($atranscript, @other_transcripts)  = split(/;/, $gene);
-      my $n = 1 + scalar(@other_transcripts);
-      $transcript_to_freq{$atranscript} = ($n/scalar(@{$genes{$entry}}))*100.0;
-    }
-}
-my $count;
-foreach my $entry (sort {my $xx = $transcript_to_freq{$b}; my $yy =  $transcript_to_freq{$a}; $xx <=> $yy } (keys %transcript_to_freq))
+
+foreach my $seqname (keys %component_by_seqname)
   {
-    #print $entry."\t".$transcript_to_freq{$entry}."\n";
-    $entry =~ s/^.+?://g;
-    $entry =~ s/,\d+$//g;
-    print $transcripts{$entry}->output_gtf()."\n";
-    $count ++;
-    if($count >= 3){
-      last;
+    my %transcript_to_freq;
+    foreach my $entry (keys %{$genes{$seqname}}) {
+      foreach my $gene (@{$genes{$seqname}{$entry}})
+        {
+          my ($atranscript, @other_transcripts)  = split(/;/, $gene);
+          my $n = 1 + scalar(@other_transcripts);
+          $transcript_to_freq{$atranscript} = ($n/scalar(@{$genes{$seqname}{$entry}}))*100.0;
+        }
     }
+    my $count;
+    foreach my $entry (sort {my $xx = $transcript_to_freq{$b}; my $yy =  $transcript_to_freq{$a}; $xx <=> $yy } (keys %transcript_to_freq))
+      {
+        $entry =~ s/^.+?://g;
+        $entry =~ s/,\d+$//g;
+        print $transcripts{$entry}->output_gtf()."\n";
+        $count ++;
+        if($count >= 3){
+          last;
+        }
+      }
   }
 
 
@@ -125,27 +128,27 @@ sub make_gene_cluster {
                 $label_str .= "<".$label.">";
               }
           }
-          push @{$cluster{$label_str}}, $tx_name;
+          push @{$cluster{$seqname}{$label_str}}, $tx_name;
         }
-    }
 
-  foreach my $key ( keys %cluster)
-    {
-      my $first = 1;
-      my $list = "";
-      foreach my $x (@{$cluster{$key}}) {
-        if($x =~ m/(.+)?:(.+)/){
-          my $nexon = count_exon($2);
-          if($first) {
-            $list .= "$x,$nexon";
-            $first = 0;
-          } else{
-            $list .= ";$x,$nexon";
+      foreach my $key ( keys %{$cluster{$seqname}})
+        {
+          my $first = 1;
+          my $list = "";
+          foreach my $x (@{$cluster{$seqname}{$key}}) {
+            if($x =~ m/(.+)?:(.+)/){
+              my $nexon = count_exon($2);
+              if($first) {
+                $list .= "$x,$nexon";
+                $first = 0;
+              } else{
+                $list .= ";$x,$nexon";
+              }
+            }
           }
+          my $subset = build_subset_string($list);
+          push @{$gvenn{$seqname}{$subset}}, $list;
         }
-      }
-      my $subset = build_subset_string($list);
-      push @{$gvenn{$subset}}, $list;
     }
 
   return %gvenn;
