@@ -54,8 +54,30 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
 
 
 my %genes = make_gene_cluster();
+my %transcript_to_freq;
+foreach my $entry (keys %genes) {
+  foreach my $gene (@{$genes{$entry}})
+    {
+      my ($atranscript, @other_transcripts)  = split(/;/, $gene);
+      my $n = 1 + scalar(@other_transcripts);
+      $transcript_to_freq{$atranscript} = ($n/scalar(@{$genes{$entry}}))*100.0;
+    }
+}
+my $count;
+foreach my $entry (sort {my $xx = $transcript_to_freq{$b}; my $yy =  $transcript_to_freq{$a}; $xx <=> $yy } (keys %transcript_to_freq))
+  {
+    #print $entry."\t".$transcript_to_freq{$entry}."\n";
+    $entry =~ s/^.+?://g;
+    $entry =~ s/,\d+$//g;
+    print $transcripts{$entry}->output_gtf()."\n";
+    $count ++;
+    if($count >= 3){
+      last;
+    }
+  }
 
-print Dumper [%genes];
+
+
 
 sub make_gene_cluster {
   my %subsets;
