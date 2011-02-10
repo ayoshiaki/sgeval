@@ -54,23 +54,40 @@ foreach my $entry  (sort {$a <=> $b} keys %component)
 
 
 my %genes = make_gene_cluster();
+my %exons = count_exons();
 
 foreach my $seqname (keys %component_by_seqname)
   {
     my %transcript_to_freq;
+    my %number_of_samples;
     foreach my $entry (keys %{$genes{$seqname}}) {
       foreach my $gene (@{$genes{$seqname}{$entry}})
         {
           my ($atranscript, @other_transcripts)  = split(/;/, $gene);
           my $n = 1 + scalar(@other_transcripts);
           $transcript_to_freq{$atranscript} = ($n/scalar(@{$genes{$seqname}{$entry}}))*100.0;
+          $number_of_samples{$seqname}{$entry} += $n;
         }
     }
     my $count;
     foreach my $entry (sort {my $xx = $transcript_to_freq{$b}; my $yy =  $transcript_to_freq{$a}; $xx <=> $yy } (keys %transcript_to_freq))
       {
+        my $source_name = $entry;
+        if($entry =~ m/(^.+?):/)
+          {
+            $source_name = $1;
+          }
+
         $entry =~ s/^.+?://g;
         $entry =~ s/,\d+$//g;
+
+        foreach my $cds (@{$transcripts{$entry}->cds()}) {
+          my $start = $cds->start();
+          my $end = $cds->stop();
+          my $strand = $cds->strand();
+          my $str = "$seqname:$start-$end,$strand";
+          $cds->{Score} = int(($exons{$str}/($number_of_samples{$seqname}{$source_name}))*100.0)/100.0;
+        }
         print $transcripts{$entry}->output_gtf()."\n";
         $count ++;
         if($count >= 3){
@@ -78,6 +95,45 @@ foreach my $seqname (keys %component_by_seqname)
         }
       }
   }
+
+sub count_exons {
+  my %counter;
+  foreach my $seqname (keys %component_by_seqname)
+    {
+      foreach my $c (@{$component_by_seqname{$seqname}})
+        {
+          foreach my $node (@{$component{$c}})
+            {
+              if(
+                 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
+                 ||
+                 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
+                 ||
+                 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
+                 ||
+                 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
+                )
+                {
+
+                  foreach my $next_node (keys %{$sites{$node}->{Next}})
+                    {
+                      my $count = 0;
+                      my %aux;
+                      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
+                        {
+                          $source =~ /(.+)?:(.+)/;
+                          $count ++;
+                          $aux{$1} = 1;
+                        }
+                      $counter{"$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}} = $count;
+
+                    }
+                }
+            }
+        }
+    }
+  return %counter;
+}
 
 
 
