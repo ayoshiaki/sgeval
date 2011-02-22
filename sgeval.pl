@@ -4,17 +4,20 @@ use strict;
 use warnings;
 
 use GTF;
+use Digest::MD5 qw(md5_hex);
 use Data::Dumper;
 use Getopt::Long;
 
 my @gtf_files;
 my $output_dir;
-
+my $compare  = 0;
 GetOptions ("gtf=s{,}" => \@gtf_files,
-            "out=s" => \$output_dir);
+            "out=s" => \$output_dir,
+            "compare" => \$compare);
 
 if($#gtf_files < 0 || !defined ($output_dir)) {
-  print STDERR "USAGE: $0 -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
+  print STDERR "USAGE: $0 [-c] -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
+  print STDERR "\t-c: if you want to compare annotations instead of assess accuracy values use the -c option \n";
   exit();
 }
 mkdir $output_dir;
@@ -56,11 +59,14 @@ foreach my $gtf_file (@gtf_files)
 # build connected components
 build_components(\%component, \%sites);
 
+my %seqname_to_tops_id;
+
 my %component_by_seqname;
 foreach my $entry  (sort {$a <=> $b} keys %component)
   {
     ${$component{$entry}}[0] =~ m/(.+)?:.*/;
-    push @{$component_by_seqname{$1}},$entry;
+    $seqname_to_tops_id{md5_hex($1)} =  $1;
+    push @{$component_by_seqname{md5_hex($1)}},$entry;
   }
 
 my $number_of_transcripts = 0;
@@ -102,6 +108,7 @@ sub generate_result {
     print OUTPUT "//\n";
   }
   close(OUTPUT);
+  if($compare == 0) {
   open (OUTPUT, ">$output_dir/$output_filename"."_accuracy.txt") or die "$!";
   foreach my $source (@sources) {
     my $tp = 0;
@@ -137,7 +144,7 @@ sub generate_result {
     print OUTPUT "//\n";
   }
   close(OUTPUT);
-
+}
 }
 
 
@@ -345,8 +352,7 @@ sub nucleotide_venn {
                     $subset .= "|$k";
                   }
                 }
-
-                push @{$nucleotide_venn{$subset}}, "$seqname,$strand:$i";
+                push @{$nucleotide_venn{$subset}}, $seqname_to_tops_id{$seqname}.",$strand:$i";
               }
           }
         }
@@ -462,7 +468,7 @@ sub exon_overlaped_venn {
                           }
                         }
 
-                      push @{$exon_overlaped_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+                      push @{$exon_overlaped_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
 
 
 
@@ -547,7 +553,7 @@ sub exon_exact_venn {
                           }
                         }
 
-                      push @{$exon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+                      push @{$exon_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
 
                     }
                 }
@@ -594,7 +600,7 @@ sub intron_exact_venn {
                         }
                       }
 
-                      push @{$intron_venn{$subset}} , "$seqname:".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+                      push @{$intron_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
 
                     }
                 }
@@ -641,7 +647,7 @@ sub donor_venn {
                     }
                   }
 
-                  push @{$donor_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$donor_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
 
                 }
             }
@@ -683,7 +689,7 @@ sub acceptor_venn {
                     }
                   }
 
-                  push @{$acceptor_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$acceptor_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
 
                 }
             }
@@ -724,7 +730,7 @@ sub stop_codon_venn {
                     }
                   }
 
-                  push @{$stop_codon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$stop_codon_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
 
                 }
             }
@@ -764,7 +770,7 @@ sub start_codon_venn {
                     }
                   }
 
-                  push @{$start_codon_venn{$subset}} , "$seqname:".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$start_codon_venn{$subset}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
 
                 }
             }
