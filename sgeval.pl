@@ -99,6 +99,25 @@ generate_result("donor", \%donor);
 
 
 
+sub subset_string {
+  my $aux_ref = shift;
+
+  my %aux = %{$aux_ref};
+  my $subset = "";
+  my $first = 1;
+  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+    if ($first) {
+      $first = 0;
+      $subset .= $k;
+    } else {
+      $subset .= "|$k";
+    }
+  }
+  chomp($subset);
+  return $subset;
+}
+
+
 sub generate_result {
   my $output_filename = shift;
   my $ref_venn = shift;
@@ -392,27 +411,33 @@ sub nucleotide_venn {
                 }
 
               for (my $p = 1; $p <= $#source_by_position; $p+=1) {
-                my %aux;
+                my %left_aux;
                 foreach my $source (keys %{$source_by_position[$p-1]}) {
                   if(${$source_by_position[$p-1]}{$source} == 1) {
-                    $aux{$source} = 1;
+                    $left_aux{$source} = 1;
                   }
                 }
-                my $subset = "";
-                my $first = 1;
-                foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                  if ($first) {
-                    $first = 0;
-                    $subset .= $k;
-                  } else {
-                    $subset .= "|$k";
-                  }
-                }
-                if(!$subset eq ""){
-                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$sites[$p-1]."-".($sites[$p]).",".$strand.",".($sites[$p] - $sites[$p-1]);
-                  push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$sites[$p-1]."-".($sites[$p]);
 
-                  $nucleotide_venn{$subset}->{"count"}  += $sites[$p] - $sites[$p-1] ;
+                my %right_aux;
+                foreach my $source (keys %{$source_by_position[$p]}) {
+                  if(${$source_by_position[$p]}{$source} == 1) {
+                    $right_aux{$source} = 1;
+                  }
+                }
+
+                my $subset = subset_string(\%left_aux);
+                my $subset2 = subset_string(\%right_aux);
+
+                if(!$subset eq ""){
+                  my $start = $sites[$p-1];
+                  my $end = $sites[$p];
+                  if(!($subset2 eq "")){
+                    $end -= 1;
+                  }
+                  print "<$subset> <$subset2> $start $end\n";
+                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                  push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
+                  $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
                 }
               }
 
@@ -482,16 +507,7 @@ sub exon_overlaped_venn {
                           }
                         }
 
-                      my $subset = "";
-                      my $first = 1;
-                      foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                        if ($first) {
-                          $first = 0;
-                          $subset .= $k;
-                        } else {
-                          $subset .= "|$k";
-                        }
-                      }
+                      my $subset = subset_string(\%aux);
 
 #                      print "<".$subset.">\n";
                       my $type;
@@ -567,16 +583,7 @@ sub exon_exact_venn {
                           $source =~ /(.+)?:(.+)/;
                           $aux{$1} = 1;
                         }
-                      my $subset;
-                      my $first = 1;
-                      foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                        if($first) {
-                          $first = 0;
-                          $subset .= $k;
-                        } else {
-                          $subset .= "|$k";
-                        }
-                      }
+                      my $subset = subset_string(\%aux);
                       my $type;
                       if($node =~ /start/ && $sites{$node}->{Strand} eq "+")
                         {
@@ -646,16 +653,9 @@ sub intron_exact_venn {
                           $source =~ /(.+)?:(.+)/;
                           $aux{$1} = 1;
                         }
-                      my $subset;
-                      my $first = 1;
-                      foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                        if($first) {
-                          $first = 0;
-                          $subset .= $k;
-                        } else {
-                          $subset .= "|$k";
-                        }
-                      }
+
+                      my $subset = subset_string(\%aux);
+
 
                       push @{$intron_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
                       $intron_venn{$subset}->{"count"} += 1;
@@ -694,17 +694,7 @@ sub donor_venn {
                       $aux{$1} = 1;
                     }
 
-                  my $subset;
-                  my $first = 1;
-                  foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                    if($first) {
-                      $first = 0;
-                      $subset .= $k;
-                    } else {
-                      $subset .= "|$k";
-                    }
-                  }
-
+                  my $subset = subset_string(\%aux);
                   push @{$donor_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $donor_venn{$subset}->{"count"} += 1;
                 }
@@ -735,17 +725,7 @@ sub acceptor_venn {
                       $source =~ /(.+)?:(.+)/;
                       $aux{$1} = 1;
                     }
-
-                  my $subset;
-                  my $first = 1;
-                  foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                    if($first) {
-                      $first = 0;
-                      $subset .= $k;
-                    } else {
-                      $subset .= "|$k";
-                    }
-                  }
+                  my $subset = subset_string(\%aux);
 
                   push @{$acceptor_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $acceptor_venn{$subset} ->{"count"} += 1;
@@ -777,16 +757,7 @@ sub stop_codon_venn {
                       $aux{$1} = 1;
                     }
 
-                  my $subset;
-                  my $first = 1;
-                  foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                    if($first) {
-                      $first = 0;
-                      $subset .= $k;
-                    } else {
-                      $subset .= "|$k";
-                    }
-                  }
+                  my $subset = subset_string(\%aux);
 
                   push @{$stop_codon_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $stop_codon_venn{$subset}->{"count"} += 1;
@@ -817,16 +788,7 @@ sub start_codon_venn {
                       $aux{$1} = 1;
                     }
 
-                  my $subset;
-                  my $first = 1;
-                  foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                    if($first) {
-                      $first = 0;
-                      $subset .= $k;
-                    } else {
-                      $subset .= "|$k";
-                    }
-                  }
+                  my $subset = subset_string(\%aux);
 
                   push @{$start_codon_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $start_codon_venn{$subset}->{"count"} += 1;
@@ -1075,3 +1037,4 @@ sub build_components {
     $id ++;
   }
 }
+
