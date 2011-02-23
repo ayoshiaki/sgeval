@@ -379,25 +379,26 @@ sub nucleotide_venn {
                 {
                   push @{$source_by_position[0]}, $i->{"source"};
                 }
-              for (my $k = 1; $k <= $#sites+1; $k++)
+              my @new = @{$source_by_position[0]};
+              for (my $k = 1; $k <= $#sites; $k++)
                 {
-                  @{$source_by_position[$k]} = @{$source_by_position[$k-1]};
+                  @{$source_by_position[$k]} = @new;
                   foreach my $i  (@{$intervals{$strand}{$sites[$k-1]}})
                     {
-                      if($sites[$k-1] == $i->{"start"})
+                      if($sites[$k] == $i->{"start"})
                         {
                           push @{$source_by_position[$k]}, $i->{"source"};
+                          @new = @{$source_by_position[$k]};
                         }
-                      elsif($sites[$k-1] == $i->{"end"})
+                      if($sites[$k] == $i->{"end"})
                         {
-                          my @new ;
                           foreach my $source (@{$source_by_position[$k]})
                             {
+                              @new = ();
                               if(!($source eq $i->{"source"})){
                                 push @new, $source;
                               }
                             }
-                          @{$source_by_position[$k]} = @new;
                         }
                     }
                 }
