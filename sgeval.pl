@@ -301,10 +301,10 @@ sub nucleotide_venn {
 
   foreach my $seqname (keys %component_by_seqname)
     {
-      my %intervals;
-
       foreach my $c (@{$component_by_seqname{$seqname}})
         {
+          my %intervals;
+
           foreach my $node (@{$component{$c}})
             {
               if(
@@ -324,37 +324,89 @@ sub nucleotide_venn {
                       my $start = $2;
                       $next_node =~ m/(.+)?:(\d+),(.+)/;
                       my $end = $2;
-                      for (my $i = $start;  $i <= $end; $i++)
+                      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
-                          foreach my $source (@{$sites{$node}->{Next}->{$next_node}}) {
-                            push @{$intervals{$strand}{$i}}, $source;
-                          }
+                          $source =~ /(.+)?:(.+)/;
+                          my $x;
+                          $x->{"source"} = $1;
+                          $x->{"start"} = $start;
+                          $x->{"end"} = $end;
+                          push @{$intervals{$strand}{$start}}, $x;
+                          my $y;
+                          $y->{"source"} = $x->{"source"};
+                          $y->{"start"} = $x->{"start"};
+                          $y->{"end"} = $x->{"end"} ;
+
+                          push @{$intervals{$strand}{$end}}, $y;
                         }
                     }
                 }
             }
-          foreach my $strand (keys %intervals) {
-            foreach my $i (sort {$a <=> $b} (keys %{$intervals{$strand}}))
-              {
-                my %aux;
-                foreach my $source (@{$intervals{$strand}{$i}})
-                  {
-                    $source =~ /(.+)?:(.+)/;
-                    $aux{$1} = 1;
-                  }
-                my $subset;
-                my $first = 1;
-                foreach my $k (sort {$a cmp $b} (keys %aux)) {
-                  if($first) {
-                    $first = 0;
-                    $subset .= $k;
-                  } else {
-                    $subset .= "|$k";
+
+          foreach my $strand (keys %intervals)
+            {
+              my @sorted = sort {$a <=> $b}( keys %{$intervals{$strand}});
+              my @sites;
+              my @source_by_position;
+              my $k = 0;
+              foreach my $p (@sorted)
+                {
+                  $sites[$k] = $p;
+                  if($k > 0 && $p != $sites[$k-1]){
+                    $k++;
                   }
                 }
-                push @{$nucleotide_venn{$subset}}, $seqname_to_tops_id{$seqname}.",$strand:$i";
-              }
-          }
+              foreach my $i (@{$intervals{$strand}{$sites[0]}})
+                {
+                  push @{$source_by_position[0]}, $i->{"source"};
+                }
+
+              for (my $k = 1; $k <= $#sites; $k++)
+                {
+                  @{$source_by_position[$k]} = @{$source_by_position[$k-1]};
+                  foreach my $i  (@{$intervals{$strand}{$sites[$k]}})
+                    {
+                      if($sites[$k] == $i->{"start"})
+                        {
+                          push @{$source_by_position[$k]}, $i->{"source"};
+                        }
+                      elsif($sites[$k] ==$i->{"end"})
+                        {
+                          my @new ;
+                          foreach my $source (@{$source_by_position[$k]})
+                            {
+                              if(!$source eq $i->{"source"}){
+                                push @new, $source;
+                              }
+                            }
+                          @{$source_by_position[$k]} = @new;
+                        }
+                    }
+                }
+
+              for(my $i = 1; $i<= $#source_by_position; $i++)
+                {
+                  my %aux;
+                  foreach my $source (@{$source_by_position[$i]})
+                    {
+                      $aux{$source} =1;
+                    }
+                  my $subset;
+                  my $first = 1;
+                  foreach my $k (sort {$a cmp $b} (keys %aux)) {
+                    if($first) {
+                      $first = 0;
+                      $subset .= $k;
+                    } else {
+                      $subset .= "|$k";
+                    }
+                  }
+                  $nucleotide_venn{$subset} = $seqname.":".$sites[$i-1]."-".($sites[$i]-1)."\n";
+
+                }
+
+
+            }
         }
     }
   return %nucleotide_venn;
