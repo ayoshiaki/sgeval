@@ -79,19 +79,19 @@ my %stop = stop_codon_venn();
 my %acceptor = acceptor_venn();
 my %donor = donor_venn();
 
-my %exon_overlaped = exon_overlaped_venn();
-my %nucleotide = nucleotide_venn();
+#my %exon_overlaped = exon_overlaped_venn();
+#my %nucleotide = nucleotide_venn();
 
 generate_result("gene_overlaped", \%gvenn_overlaped);
 generate_result("gene_exact", \%gvenn_exact);
 generate_result("exon_exact", \%exon_exact);
 generate_result("intron_exact", \%intron_exact);
-generate_result("exon_overlaped", \%exon_overlaped);
+#generate_result("exon_overlaped", \%exon_overlaped);
 generate_result("start", \%start);
 generate_result("stop", \%stop);
 generate_result("acceptor", \%acceptor);
 generate_result("donor", \%donor);
-generate_result("nucleotide", \%nucleotide);
+#generate_result("nucleotide", \%nucleotide);
 
 
 sub generate_result {
@@ -131,15 +131,23 @@ sub generate_result {
         } else {
         }
       }
-    my $sp = (100.0*($tp/($tp + $fp)));
-    my $sn = (100.0*($tp/($tp + $fn)));
+    
+
+    my $sp = 0; 
+
+    if($tp + $fp != 0) 
+   {$sp = (100.0*($tp/($tp + $fp)))};
+    my $sn = 0;
+    if($tp + $fn != 0) 
+    { $sn = (100.0*($tp/($tp + $fn)));}
+    
     my $f = 0;
     if(($sp + $sn) != 0) {
       $f = 2 * $sp * $sn / ($sp + $sn);
     }
     print OUTPUT $source."\t".($tp+$fp)."\n";
     print OUTPUT "\tTP\t$tp\n\tFP\t$fp\n\tFN\t$fn\n";
-    printf OUTPUT ("\tSpecificity\t%.2f\n\tSensitivity\t%.2f\n", (100.0*($tp/($tp + $fp))),(100.0*($tp/($tp + $fn))));
+    printf OUTPUT ("\tPPV\t%.2f\n\tSensitivity\t%.2f\n", $sp,$sn);
     printf OUTPUT ("\tF\t%.2f\n", $f);
     print OUTPUT "//\n";
   }
