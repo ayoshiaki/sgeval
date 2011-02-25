@@ -36,7 +36,7 @@ foreach my $file (@files)
     $total{$file}{FN} = 0;
     $total{$file}{TP} = 0;
 
-    $total{$file}{Specificity} = 0;
+    $total{$file}{PPV} = 0;
     $total{$file}{Sensitivity} = 0;
     $total{$file}{F} = 0;
 
@@ -59,12 +59,12 @@ foreach my $file (@files)
               {
                 last;
               }
-            if($r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tSpecificity\t(\d+\.\d+)\n\tSensitivity\t(\d+\.\d+)\n\tF\t(\d+\.\d+).*/){
+            if($r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tPPV\t(\d+\.\d+)\n\tSensitivity\t(\d+\.\d+)\n\tF\t(\d+\.\d+).*/){
               push @{$results{$file}{$1}{total}}, $2;
               push @{$results{$file}{$1}{TP}}, $3;
               push @{$results{$file}{$1}{FP}}, $4;
               push @{$results{$file}{$1}{FN}}, $5;
-              push @{$results{$file}{$1}{Specificity}}, $6;
+              push @{$results{$file}{$1}{PPV}}, $6;
               push @{$results{$file}{$1}{Sensitivity}}, $7;
               push @{$results{$file}{$1}{F}}, $8;
             }
@@ -94,10 +94,10 @@ foreach my $file (keys %results)
         my $min_fn = min($results{$file}{$entry}{FN});
         my $max_fn = max($results{$file}{$entry}{FN});
 
-        my $sp = mean ($results{$file}{$entry}{Specificity});
-        my $var_sp = var($results{$file}{$entry}{Specificity});
-        my $min_sp = min($results{$file}{$entry}{Specificity});
-        my $max_sp = max($results{$file}{$entry}{Specificity});
+        my $sp = mean ($results{$file}{$entry}{PPV});
+        my $var_sp = var($results{$file}{$entry}{PPV});
+        my $min_sp = min($results{$file}{$entry}{PPV});
+        my $max_sp = max($results{$file}{$entry}{PPV});
 
         my $sn = mean($results{$file}{$entry}{Sensitivity});
         my $var_sn = var($results{$file}{$entry}{Sensitivity});
