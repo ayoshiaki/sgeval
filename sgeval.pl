@@ -434,7 +434,6 @@ sub nucleotide_venn {
                   if(!($subset2 eq "")){
                     $end -= 1;
                   }
-                  print "<$subset> <$subset2> $start $end\n";
                   push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                   push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                   $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
