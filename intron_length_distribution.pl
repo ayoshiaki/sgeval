@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl 
 
 use strict ;
 use warnings;
@@ -18,14 +18,15 @@ if( ! defined($venn)) {
 
 open (INPUT, "<$venn") or die "$!";
 my $venn_str = "";
-foreach my $line (<INPUT>)
+foreach my $line (<INPUT>) 
   {
     $venn_str .= $line;
   }
 close(INPUT);
 
 my @venn = split("//", $venn_str);
-  print "set\tlength\tstrand\n";
+  print "set\tseqname\tlength\tstrand\n";
+
 foreach my $v (@venn) {
   my @lines = split(/\n/, $v) ;
   if(scalar(@lines) <= 0){
@@ -41,11 +42,11 @@ foreach my $v (@venn) {
   my ($subset, $lixo) = split(/\t/,$lines[0]);
   $subset =~ s#\|#.#g;
   chomp($subset);
-  for(my $i = 1; $i < scalar(@lines); $i++)
+  for(my $i = 1; $i < scalar(@lines); $i++) 
     {
       my $l = $lines[$i];
       $l =~ s/\t//g;
       $l =~ /(.+)?:(\d+)-(\d+),(\+|\-)/;
-      print $subset."\t".($3 - $2 + 1)."\t".$4."\n";
+      print $subset."\t".$1."\t".($3 - $2 + 1)."\t".$4."\n";
     }
 }
