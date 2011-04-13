@@ -7,12 +7,10 @@ use Data::Dumper;
 use Getopt::Long;
 
 my @directory;
-my $output;
 
-GetOptions ("d=s{,}" => \@directory,
-           "o=s" => \$output);
+GetOptions ("d=s{,}" => \@directory);
 
-if( ($#directory <0) || !defined $output) {
+if( ($#directory <0)) {
   print STDERR "USAGE: $0 -d <dir1> <dir2> ...\n";
   exit();
 }
@@ -31,22 +29,16 @@ my @files = ("gene_exact_accuracy.txt",
              "donor_accuracy.txt");
 my %results;
 my %total;
-print "dir\tfile\tpart\ttotal\ttp\tfp\tfn\tppv\tsn\tf\n";
+print "pred\tdir\tfile\tpart\ttotal\ttp\tfp\tfn\tppv\tsn\tf\n";
 
-foreach my $file (@files)
+foreach my $dir (@directory)
   {
-    $total{$file}{FP} = 0;
-    $total{$file}{FN} = 0;
-    $total{$file}{TP} = 0;
-    
-    $total{$file}{PPV} = 0;
-    $total{$file}{Sensitivity} = 0;
-    $total{$file}{F} = 0;
-    
-    
-    
-    foreach my $dir (@directory)
+    foreach my $file (@files)
       {
+        $dir =~ /cross_validation_(\d+)/;
+        my $training_set_size = $1*100;
+        my $type = $file;
+        $type =~ s/_accuracy.txt//g;
 	for (my $k  = 0; $k < 5; $k++) {
 	  open (IN, "<$dir/compara$k/$file") or die "$!";
 	  my $txt;
@@ -64,7 +56,7 @@ foreach my $file (@files)
 		  last;
 		}
 	      if($r =~ m/(.+)\t(\d+)\n\tTP\t(\d+)\n\tFP\t(\d+)\n\tFN\t(\d+)\n\tPPV\t(\d+\.\d+)\n\tSensitivity\t(\d+\.\d+)\n\tF\t(\d+\.\d+).*/){
-		print "$dir\t$file\t$k\t$2\t$3\$4\t$5\t$6\t$7\t$8\n";
+		print "$1\t$training_set_size\t$type\t$k\t$2\t$3\t$4\t$5\t$6\t$7\t$8\n";
 	      }
 	    }
 	}
