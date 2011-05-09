@@ -8,16 +8,19 @@ use Digest::MD5 qw(md5_hex);
 use Data::Dumper;
 use Getopt::Long;
 
+my $print_graph = 0;
 my @gtf_files;
 my $output_dir;
 my $compare  = 0;
 GetOptions ("gtf=s{,}" => \@gtf_files,
             "out=s" => \$output_dir,
+            "print_graph" => \$print_graph,
             "compare" => \$compare);
 
 if($#gtf_files < 0 || !defined ($output_dir)) {
-  print STDERR "USAGE: $0 [-c] -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
+  print STDERR "USAGE: $0 [-c] [-p] -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
   print STDERR "\t-c: only venn diagrams   \n";
+  print STDERR "\t-p: print splicing graphs (tgf format)   \n";
   exit();
 }
 mkdir $output_dir;
@@ -100,6 +103,48 @@ generate_result("stop", \%stop);
 generate_result("acceptor", \%acceptor);
 generate_result("donor", \%donor);
 
+if($print_graph) {
+  print_graph();
+}
+
+sub print_graph {
+  mkdir ("$output_dir/splicing_graphs");
+  foreach my $seqname (keys %component_by_seqname)
+    {
+
+      my $name =     $seqname_to_tops_id{$seqname};
+      open (OUT, ">$output_dir/splicing_graphs/$name.tgf") or die "cant open $output_dir/splicing_graphs/$name.tgf:$!\n";
+      my $id = 0;
+      my %node_to_id;
+      foreach my $c ( @{$component_by_seqname{$seqname}})
+        {
+          foreach my $node (@{$component{$c}})
+            {
+              print OUT $id." ".$node."\n";
+              $node_to_id{$node} = $id;
+              $id++;
+            }
+        }
+      print OUT "#\n";
+      my %printed;
+      foreach my $c ( @{$component_by_seqname{$seqname}})
+        {
+          foreach my $from (@{$component{$c}})
+            {
+              foreach my $to  (keys %{$sites{$from}->{Next}})
+                {
+                  my @transcripts = @{$sites{$from}->{Next}->{$to}};
+                  foreach my $source  (sort {$a cmp $b} (@transcripts)){
+                    print OUT $node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n" if !(defined $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n"});
+                    $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n"} = 1;
+
+                  }
+                }
+            }
+        }
+      close(OUT);
+    }
+}
 
 
 sub subset_string {
@@ -407,7 +452,7 @@ sub nucleotide_intron_venn {
                         }
                     }
                 }
-	      my $last_end  = 0;
+              my $last_end  = 0;
               for (my $p = 1; $p <= $#source_by_position; $p+=1) {
                 my %left_aux;
                 foreach my $source (keys %{$source_by_position[$p-1]}) {
@@ -429,12 +474,12 @@ sub nucleotide_intron_venn {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-		 
-		  if(($p-2 >= 0) && ($start == $last_end))
-		    {
-		      $start += 1;
-		    }
-		  $last_end = $end;
+
+                  if(($p-2 >= 0) && ($start == $last_end))
+                    {
+                      $start += 1;
+                    }
+                  $last_end = $end;
 
                   push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                   push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
@@ -632,15 +677,15 @@ sub nucleotide_venn_with_intron_partial {
                       foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
                           $source =~ /(.+)?:(.+)/;
-			  my $x;
-			  $x->{"source"} = $1;
-			  $x->{"start"} = $start + 1;
-			  $x->{"end"} = $end - 1;
-			  if($x->{"source"} eq $ref_source) {
-			    $x->{"source"} = $x->{"source"}."_intron";
-			    push @{$intervals{$strand}{$start + 1}}, $x;
-			    push @{$intervals{$strand}{$end - 1}}, $x;
-			  }
+                          my $x;
+                          $x->{"source"} = $1;
+                          $x->{"start"} = $start + 1;
+                          $x->{"end"} = $end - 1;
+                          if($x->{"source"} eq $ref_source) {
+                            $x->{"source"} = $x->{"source"}."_intron";
+                            push @{$intervals{$strand}{$start + 1}}, $x;
+                            push @{$intervals{$strand}{$end - 1}}, $x;
+                          }
                         }
                     }
                 }
@@ -670,17 +715,17 @@ sub nucleotide_venn_with_intron_partial {
                       ${$source_by_position[$k]}{$key} =  ${$source_by_position[$k-1]}{$key}  ;
                     }
                   }
-		  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
-		    {
-		      if($i->{"start"} == $sites[$k])
-			{
-			  ${$source_by_position[$k]}{$i->{"source"}} = 1;
-			}
-		      if($i->{"end"} == $sites[$k])
-			{
-			  ${$source_by_position[$k]}{$i->{"source"}} = 0;
-			}
-		    }
+                  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
+                    {
+                      if($i->{"start"} == $sites[$k])
+                        {
+                          ${$source_by_position[$k]}{$i->{"source"}} = 1;
+                        }
+                      if($i->{"end"} == $sites[$k])
+                        {
+                          ${$source_by_position[$k]}{$i->{"source"}} = 0;
+                        }
+                    }
                 }
 
 
@@ -688,7 +733,7 @@ sub nucleotide_venn_with_intron_partial {
                 my %left_aux;
                 foreach my $source (keys %{$source_by_position[$p-1]}) {
                   if(${$source_by_position[$p-1]}{$source} == 1) {
-		      $left_aux{$source} = 1;
+                      $left_aux{$source} = 1;
                   }
                 }
                 my %right_aux;
@@ -704,16 +749,16 @@ sub nucleotide_venn_with_intron_partial {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-		  if($subset2 =~ m/$subset/)
-		    {
-		      $end -= 1;
-		    }
+                  if($subset2 =~ m/$subset/)
+                    {
+                      $end -= 1;
+                    }
 
-		    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
-		    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
-		    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
-		}
-	      }
+                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
+                    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
+                }
+              }
             }
         }
     }
@@ -775,15 +820,15 @@ sub nucleotide_venn_partial {
                       foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
                           $source =~ /(.+)?:(.+)/;
-			  my $x;
-			  $x->{"source"} = $1;
-			  $x->{"start"} = $start + 1;
-			  $x->{"end"} = $end - 1;
-			  if($x->{"source"} eq $ref_source) {
-			    $x->{"source"} = $x->{"source"}."_intron";
-			    push @{$intervals{$strand}{$start + 1}}, $x;
-			    push @{$intervals{$strand}{$end - 1}}, $x;
-			  }
+                          my $x;
+                          $x->{"source"} = $1;
+                          $x->{"start"} = $start + 1;
+                          $x->{"end"} = $end - 1;
+                          if($x->{"source"} eq $ref_source) {
+                            $x->{"source"} = $x->{"source"}."_intron";
+                            push @{$intervals{$strand}{$start + 1}}, $x;
+                            push @{$intervals{$strand}{$end - 1}}, $x;
+                          }
                         }
                     }
                 }
@@ -813,17 +858,17 @@ sub nucleotide_venn_partial {
                       ${$source_by_position[$k]}{$key} =  ${$source_by_position[$k-1]}{$key}  ;
                     }
                   }
-		  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
-		    {
-		      if($i->{"start"} == $sites[$k])
-			{
-			  ${$source_by_position[$k]}{$i->{"source"}} = 1;
-			}
-		      if($i->{"end"} == $sites[$k])
-			{
-			  ${$source_by_position[$k]}{$i->{"source"}} = 0;
-			}
-		    }
+                  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
+                    {
+                      if($i->{"start"} == $sites[$k])
+                        {
+                          ${$source_by_position[$k]}{$i->{"source"}} = 1;
+                        }
+                      if($i->{"end"} == $sites[$k])
+                        {
+                          ${$source_by_position[$k]}{$i->{"source"}} = 0;
+                        }
+                    }
                 }
 
 
@@ -831,7 +876,7 @@ sub nucleotide_venn_partial {
                 my %left_aux;
                 foreach my $source (keys %{$source_by_position[$p-1]}) {
                   if(${$source_by_position[$p-1]}{$source} == 1) {
-		      $left_aux{$source} = 1;
+                      $left_aux{$source} = 1;
                   }
                 }
                 my %right_aux;
@@ -847,24 +892,24 @@ sub nucleotide_venn_partial {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-		  my $x  = $ref_source."_intron";
-		  if($subset =~ m/$ref_source/ && !($subset =~ m/^$x$/)) { 
-		    $subset =~ s/$x\|//g;
-		    $subset =~ s/\|$x//g;
-		    $subset2 =~ s/$x\|//g;
-		    $subset2 =~ s/\|$x//g;
-		    if($subset2 =~ m/$subset/)
-		      {
-			$end -= 1;
-		      }
+                  my $x  = $ref_source."_intron";
+                  if($subset =~ m/$ref_source/ && !($subset =~ m/^$x$/)) {
+                    $subset =~ s/$x\|//g;
+                    $subset =~ s/\|$x//g;
+                    $subset2 =~ s/$x\|//g;
+                    $subset2 =~ s/\|$x//g;
+                    if($subset2 =~ m/$subset/)
+                      {
+                        $end -= 1;
+                      }
 
-		    
-		    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
-		    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
-		    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
-		  }
-		}
-	      }
+
+                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
+                    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
+                  }
+                }
+              }
             }
         }
     }
@@ -901,15 +946,15 @@ sub nucleotide_intron_venn_partial {
                       foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
                           $source =~ /(.+)?:(.+)/;
-			  if($source eq $ref_source) {
-			      my $x;
-			      $x->{"source"} = $1;
-			      $x->{"start"} = $start;
-			      $x->{"end"} = $end;
-			      $x->{"type"} = "exon";
-			      push @{$intervals{$strand}{$start}}, $x;
-			      push @{$intervals{$strand}{$end}}, $x;
-			  }
+                          if($source eq $ref_source) {
+                              my $x;
+                              $x->{"source"} = $1;
+                              $x->{"start"} = $start;
+                              $x->{"end"} = $end;
+                              $x->{"type"} = "exon";
+                              push @{$intervals{$strand}{$start}}, $x;
+                              push @{$intervals{$strand}{$end}}, $x;
+                          }
                         }
                     }
                 }
@@ -932,15 +977,15 @@ sub nucleotide_intron_venn_partial {
                       my $end = $2;
                       foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
-			    $source =~ /(.+)?:(.+)/;
-			    my $x;
-			    $x->{"source"} = $1;
-			    $x->{"start"} = $start+1;
-			    $x->{"end"} = $end-1;
-			    $x->{"type"} = "intron";
-			    push @{$intervals{$strand}{$start}}, $x;
-			    push @{$intervals{$strand}{$end}}, $x;
-			    
+                            $source =~ /(.+)?:(.+)/;
+                            my $x;
+                            $x->{"source"} = $1;
+                            $x->{"start"} = $start+1;
+                            $x->{"end"} = $end-1;
+                            $x->{"type"} = "intron";
+                            push @{$intervals{$strand}{$start}}, $x;
+                            push @{$intervals{$strand}{$end}}, $x;
+
                         }
                     }
                 }
@@ -970,14 +1015,14 @@ sub nucleotide_intron_venn_partial {
                       ${$source_by_position[$k]}{$key} =  ${$source_by_position[$k-1]}{$key}  ;
                     }
                   }
-		  my $inside_ref = 0;
+                  my $inside_ref = 0;
                  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
                     {
-		      if($i->{"source"} eq $ref_source) {
-			$inside_ref = 1;
-			last;
-		      }
-		    }		  
+                      if($i->{"source"} eq $ref_source) {
+                        $inside_ref = 1;
+                        last;
+                      }
+                    }
                  foreach my $i (@{$intervals{$strand}{$sites[$k]}})
                     {
                       if(($i->{"start"} == $sites[$k]) && ($i->{"type"} eq "intron") && $inside_ref)
@@ -1015,14 +1060,14 @@ sub nucleotide_intron_venn_partial {
                   if(!($subset2 eq "")){
                     $end -= 1;
                   }
-		  if($subset =~ m/$ref_source/) { 
-		    $subset =~ s/$ref_source."_intron"\|//g;
-		    $subset =~ s/\|$ref_source."_intron"//g;
-		    print STDERR $subset."\n"; 
-		    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
-		    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
-		    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
-		  }
+                  if($subset =~ m/$ref_source/) {
+                    $subset =~ s/$ref_source."_intron"\|//g;
+                    $subset =~ s/\|$ref_source."_intron"//g;
+                    print STDERR $subset."\n";
+                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
+                    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
+                  }
                 }
               }
             }
