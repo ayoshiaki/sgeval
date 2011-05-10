@@ -83,13 +83,13 @@ my %nucleotide = nucleotide_venn();
 my %nucleotide_partial = nucleotide_venn_partial();
 my %nucleotide_intron = nucleotide_intron_venn();
 my %nucleotide_exon_with_intron_partial = nucleotide_venn_with_intron_partial();
-my %exon_overlaped = exon_overlaped_venn(\%nucleotide);
+# my %exon_overlaped = exon_overlaped_venn(\%nucleotide);
 
 generate_result("nucleotide_exon", \%nucleotide);
 generate_result("nucleotide_exon_partial", \%nucleotide_partial);
 generate_result("nucleotide_exon_with_intron_partial", \%nucleotide_exon_with_intron_partial);
 generate_result("nucleotide_intron", \%nucleotide_intron);
-generate_result("exon_overlaped", \%exon_overlaped);
+# generate_result("exon_overlaped", \%exon_overlaped);
 
 generate_result("gene_exact", \%gvenn_exact);
 generate_result("exon_exact", \%exon_exact);
@@ -179,7 +179,7 @@ sub generate_result {
     print OUTPUT "//\n";
   }
   close(OUTPUT);
-}
+ }
 }
 
 
@@ -429,7 +429,7 @@ sub nucleotide_intron_venn {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-		 
+
 		  if(($p-2 >= 0) && ($start == $last_end))
 		    {
 		      $start += 1;
@@ -497,6 +497,7 @@ sub nucleotide_venn {
                     }
                 }
             }
+	  my $last_end = 0;
 
           foreach my $strand (keys %intervals)
             {
@@ -556,6 +557,7 @@ sub nucleotide_venn {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
+
                   if(!($subset2 eq "")){
                     $end -= 1;
                   }

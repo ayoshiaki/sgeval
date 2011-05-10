@@ -20,7 +20,6 @@ if( ($#directory <0) || !defined $output) {
 my @files = ("gene_exact_accuracy.txt",
              "exon_exact_accuracy.txt",
              "intron_exact_accuracy.txt",
-             "exon_overlaped_accuracy.txt",
              "intron_exact_accuracy.txt",
              "nucleotide_exon_accuracy.txt",
              "nucleotide_exon_partial_accuracy.txt",
