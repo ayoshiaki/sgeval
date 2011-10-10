@@ -1,26 +1,36 @@
-* Medidas de exatidão
 
-** para cada sequencia, precisamos gerar:
-*** TODO diagrama de venn por transcrito
-    [ ] criar um arquivo para cada subset com a lista dos genes 
-    [ ] gerar um arquivo com os valores de Sp, Sn 
-    [ ] gerar uma tabela com as contagens de cada subconjunto
-    [ ] gerar para cada sequencia, os grafos de splicing
+          1         2         3         4         5
+012345678901234567890123456789012345678901234567890
+1   EEEEEEE-----EEEEEE------EEEEEEE-----EEEEEEE
+2   EEEEEEEEE---EEEEEEEE----EEEEEEEE----EEEEEEE
+3   EEEEEEE-----EEEEEEEE----EEEEEEE-------EEEEE
 
-*** TODO diagrama de venn por exon
-    [ ] criar um arquivo para cada subset com a lista dos exons
-    [ ] gerar um arquivo com os valores de Sp, Sn
-    [ ] gerar uma tabela com as contagens totais de cada subconjunto
-    [ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
 
-*** TODO diagrama de venn por sitio
-    [ ] criar um arquivo para cada subset com a lista dos sitios
-    [ ] gerar um arquivo com os valores de Sp, Sn contra a referencia
-    [ ] gerar uma tabela com as contagens de cada subconjunto
-    [ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
 
-*** TODO diagram de venn por nucleotideo
-    [ ] mostrar o resultado em termos de Sp, Sn... contra a referencia
-    [ ] gerar para cada sequencia a tabela com a contagem de cada subconjunto
+1 4, b1,b2, b3
+2 10, e1,e3
+3 12, e2
+4 16, b1, b2, b3
+5 21 e1
+6 23 e2,e3
+7 28, b1,b2,b3
+8 34 e1,e3
+9 35 e2
+10 40 b1, b2
+11 42 b3
+12 46 e1 e2 e3
 
+
+1 1 1 1
+2 0 1 0
+3 0 0 0
+4 1 1 1
+5 0 1 1
+6 0 0 0
+7 1 1 1
+8 0 1 0
+9 0 0 0
+10 1 1 0
+11 1 1 1
+12 0 0 0
 

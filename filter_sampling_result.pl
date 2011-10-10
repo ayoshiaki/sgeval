@@ -20,15 +20,21 @@ if(!defined $gtf_file) {
 my %sites;
 my %component;
 my %transcripts;
+
 my $gtf = GTF::new({gtf_filename => $gtf_file});
 my $source = $gtf_file;
 $source =~ s/\.gtf//g;
 $source =~ s%.+/(.+)$%$1%g;
-
+my $tx_counter = 1;
 foreach my $gene (@{$gtf->genes()})
   {
     foreach my $tx (@{$gene->transcripts})
       {
+        if(defined ($transcripts{$tx->id})) {
+          my $new_id = ($tx->id).".".$tx_counter;
+          $tx_counter++;
+          $tx->set_id($new_id);
+        }
         $transcripts{$tx->id} = $tx;
       }
 

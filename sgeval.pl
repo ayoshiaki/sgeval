@@ -19,19 +19,47 @@ GetOptions ("gtf=s{,}" => \@gtf_files,
 
 if($#gtf_files < 0 || !defined ($output_dir)) {
   print STDERR "USAGE: $0 [-c] [-p] -o <output_directory> -g <reference.gtf> <prediction1.gtf> <prediction2.gtf> ...\n";
-  print STDERR "\t-c: only venn diagrams   \n";
+  print STDERR "\t-c: venn diagrams without accuracy metrics\n";
   print STDERR "\t-p: print splicing graphs (tgf format)   \n";
   exit();
 }
 mkdir $output_dir;
 
-# reading all GTFs
+
+#  hashes that stores md5 code for the entries.
+my %names_hash;
+
+my $tx_counter = 1;
+foreach my $gtf_file (@gtf_files) {
+    my $gtf = GTF::new({gtf_filename => $gtf_file});
+    my $source = $gtf_file;
+    $source =~ s/\.gtf//g;
+    $source =~ s%.+/(.+)$%$1%g;
+    $names_hash{md5_hex($source)} = $source;
+    foreach my $gene (@{$gtf->genes()})
+      {
+        $names_hash{md5_hex($gene->seqname)} = $gene->seqname;
+        foreach my $tx (@{$gene->transcripts}){
+            my $txid= md5_hex($tx->id);
+            if(defined ($names_hash{$txid})) {
+              my $new_id = ($tx->id).".".$tx_counter;
+              $tx_counter++;
+              $tx->set_id($new_id);
+              $txid = md5_hex($new_id);
+            }
+            $names_hash{$txid} = $tx->id;
+        }
+      }
+
+  }
+
 my %sites;
 my %component;
 my @sources;
 my $ref_source;
 my $first_source = 1;
 my %transcripts;
+$tx_counter = 1;
 foreach my $gtf_file (@gtf_files)
   {
     my $gtf = GTF::new({gtf_filename => $gtf_file});
@@ -48,27 +76,33 @@ foreach my $gtf_file (@gtf_files)
       {
         foreach my $tx (@{$gene->transcripts})
           {
-            $transcripts{$tx->id} = $tx;
+            my $txid= md5_hex($tx->id);
+            if(defined ($transcripts{$txid})) {
+              my $new_id = ($tx->id).".".$tx_counter;
+              $tx_counter++;
+              $tx->set_id($new_id);
+              $txid = md5_hex($new_id);
+            }
+            $transcripts{$txid} = $tx;
           }
         if($gene->strand() eq "+")
           {
-            process_forward($gene, \%sites, $source);
+            process_forward($gene, \%sites, md5_hex($source));
           } else {
-            process_reverse($gene, \%sites, $source);
+            process_reverse($gene, \%sites, md5_hex($source));
           }
       }
   }
+
+
 # build connected components
 build_components(\%component, \%sites);
-
-my %seqname_to_tops_id;
 
 my %component_by_seqname;
 foreach my $entry  (sort {$a <=> $b} keys %component)
   {
     ${$component{$entry}}[0] =~ m/(.+)?:.*/;
-    $seqname_to_tops_id{md5_hex($1)} =  $1;
-    push @{$component_by_seqname{md5_hex($1)}},$entry;
+    push @{$component_by_seqname{$1}},$entry;
   }
 
 my $number_of_transcripts = 0;
@@ -109,7 +143,7 @@ sub print_graph {
   foreach my $seqname (keys %component_by_seqname)
     {
 
-      my $name =     $seqname_to_tops_id{$seqname};
+      my $name =     $names_hash{$seqname};
       open (OUT, ">$output_dir/splicing_graphs/$name.tgf") or die "cant open $output_dir/splicing_graphs/$name.tgf:$!\n";
       my $id = 0;
       my %node_to_id;
@@ -117,8 +151,10 @@ sub print_graph {
         {
           foreach my $node (@{$component{$c}})
             {
-              print OUT $id." ".$node."\n";
               $node_to_id{$node} = $id;
+              my $x = $node;
+              $x =~ s/((\w|\d){32}):(\d+,\w+)/$names_hash{$1}:$3/g;
+              print OUT $id." ".$x."\n";
               $id++;
             }
         }
@@ -132,8 +168,12 @@ sub print_graph {
                 {
                   my @transcripts = @{$sites{$from}->{Next}->{$to}};
                   foreach my $source  (sort {$a cmp $b} (@transcripts)){
-                    print OUT $node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n" if !(defined $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n"});
-                    $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$source."\n"} = 1;
+                    my $x = $source;
+                    $x =~ s/((\w|\d){32}):((\w|\d){32})/$names_hash{$1}:$names_hash{$3}/g;
+
+                    print OUT $node_to_id{$from}." ".$node_to_id{$to}." ".$x."\n" if !(defined $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$x."\n"});
+                    $printed{$node_to_id{$from}." ".$node_to_id{$to}." ".$x."\n"} = 1;
+
 
                   }
                 }
@@ -169,9 +209,34 @@ sub generate_result {
   my %venn = %{$ref_venn};
   open (OUTPUT, ">$output_dir/$output_filename"."_venn.txt") or die "$!";
   foreach my $key (keys %venn) {
-    print OUTPUT $key."\t".$venn{$key}->{"count"}."\n";
-    foreach my $el ( @{$venn{$key}->{"elements"}} )
+    my $keyhash = $key;
+    my @sources = split(/\|/, $keyhash);
+    $key = $names_hash{$sources[0]};
+    shift @sources;
+    foreach  my $x (@sources) {
+      $key .= "|".($names_hash{$x});
+    }
+    print OUTPUT $key."\t".$venn{$keyhash}->{"count"}."\n";
+    foreach my $el ( @{$venn{$keyhash}->{"elements"}} )
       {
+        if($el =~ /((\d|\w){32}):\d+,(-|\+)/){
+          $el =~ s/((\d|\w){32}):(\d+),(-|\+)/<$names_hash{$1}>:$3,$4/;
+        }elsif($el =~ /((\d|\w){32}):\d+-\d+,(-|\+),(\w+)/){
+          $el =~ s/((\d|\w){32}):(\d+-\d+),(-|\+),(\w+)/<$names_hash{$1}>:$3,$4,$5/;
+        }elsif($el =~ /((((\d|\w){32}):((\d|\w){32}),\d+);?)+/) {
+          my @entries = split (/;/, $el);
+          $el = $entries[0];
+          $el =~ s/((\d|\w){32}):((\d|\w){32}),(\d+)/<$names_hash{$1}:$names_hash{$3},$5>/;
+          shift @entries;
+          foreach my $entry (@entries) {
+            my $x = $entry;
+            $x =~ s/((\d|\w){32}):((\d|\w){32}),(\d+)/<$names_hash{$1}:$names_hash{$3},$5>/;
+            $el .= ";$x";
+          }
+        }elsif($el =~ /((\d|\w){32}):\d+-\d+,(-|\+)/){
+          $el =~ s/((\d|\w){32}):(\d+-\d+),(-|\+)/<$names_hash{$1}>:$3,$4/;
+        }
+
         print OUTPUT "\t".$el."\n";
       }
     print OUTPUT "//\n";
@@ -180,6 +245,10 @@ sub generate_result {
   if($compare == 0) {
   open (OUTPUT, ">$output_dir/$output_filename"."_accuracy.txt") or die "$!";
   foreach my $source (@sources) {
+    my $ref_source2 = $ref_source;
+    my $source2 = $source;
+    my $source = md5_hex($source);
+    my $ref_source = md5_hex($ref_source);
     my $tp = 0;
     my $fp = 0;
     my $fn = 0;
@@ -188,6 +257,7 @@ sub generate_result {
     }
     foreach my $subset (keys %venn)
       {
+
         my $count = $venn{$subset}->{"count"};
         my $a = ($subset =~ /^$source$/) || ($subset =~ /^$source(\|)/)|| ($subset =~ /(\|)$source(\|)/) || ($subset =~ /(|)$source$/);
         my $b = ($subset =~ /^$ref_source$/) || ($subset =~ /^$ref_source(\|)/)|| ($subset =~ /(\|)$ref_source(\|)/) || ($subset =~ /(|)$ref_source$/);
@@ -214,7 +284,7 @@ sub generate_result {
     if(($sp + $sn) != 0) {
       $f = 2 * $sp * $sn / ($sp + $sn);
     }
-    print OUTPUT $source."\t".($tp+$fp)."\n";
+    print OUTPUT $source2."\t".($tp+$fp)."\n";
     print OUTPUT "\tTP\t$tp\n\tFP\t$fp\n\tFN\t$fn\n";
     printf OUTPUT ("\tPPV\t%.5f\n\tSensitivity\t%.5f\n", $sp,$sn);
     printf OUTPUT ("\tF\t%.5f\n", $f);
@@ -369,6 +439,9 @@ sub count_exon {
   my $id = shift;
   if($id) {
     my $tx = $transcripts{$id};
+    if(!defined $tx) {
+      die "ERROR: ".$id."\n";
+    }
     return scalar(@{$tx->cds()});
   }
     return 0;
@@ -481,7 +554,7 @@ sub nucleotide_intron_venn {
                     }
                   $last_end = $end;
 
-                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                   push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                   $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
                 }
@@ -609,7 +682,7 @@ sub nucleotide_venn {
                   if(!($subset2 eq "")){
                     $end -= 1;
                   }
-                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                  push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                   push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                   $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
                 }
@@ -765,7 +838,7 @@ sub nucleotide_venn_with_intron_partial {
                       $end -= 1;
                     }
 
-                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                     push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                     $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
                 }
@@ -925,7 +998,7 @@ sub nucleotide_intron_venn_partial {
                   if($subset =~ m/$ref_source/) {
                     $subset =~ s/$ref_source."_intron"\|//g;
                     $subset =~ s/\|$ref_source."_intron"//g;
-                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname_to_tops_id{$seqname}.":".$start."-".$end.",".$strand.",".($end - $start + 1);
+                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                     push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                     $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
                   }
@@ -1027,7 +1100,7 @@ sub exon_overlaped_venn {
                           }
                         }
 
-                      push @{$exon_overlaped_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+                      push @{$exon_overlaped_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
                       $exon_overlaped_venn{$subset}->{"count"} +=1;
                     }
                 }
@@ -1101,7 +1174,7 @@ sub exon_exact_venn {
                           }
                         }
 
-                      push @{$exon_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
+                      push @{$exon_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand}.",".$type;
                       $exon_venn{$subset}->{"count"} += 1;
 
 
@@ -1143,7 +1216,7 @@ sub intron_exact_venn {
                       my $subset = subset_string(\%aux);
 
 
-                      push @{$intron_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
+                      push @{$intron_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}."-".$sites{$next_node}->{Position}.",".$sites{$node}->{Strand};
                       $intron_venn{$subset}->{"count"} += 1;
 
                     }
@@ -1181,7 +1254,7 @@ sub donor_venn {
                     }
 
                   my $subset = subset_string(\%aux);
-                  push @{$donor_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$donor_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $donor_venn{$subset}->{"count"} += 1;
                 }
             }
@@ -1213,7 +1286,7 @@ sub acceptor_venn {
                     }
                   my $subset = subset_string(\%aux);
 
-                  push @{$acceptor_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$acceptor_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $acceptor_venn{$subset} ->{"count"} += 1;
                 }
             }
@@ -1245,7 +1318,7 @@ sub stop_codon_venn {
 
                   my $subset = subset_string(\%aux);
 
-                  push @{$stop_codon_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$stop_codon_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $stop_codon_venn{$subset}->{"count"} += 1;
                 }
             }
@@ -1276,7 +1349,7 @@ sub start_codon_venn {
 
                   my $subset = subset_string(\%aux);
 
-                  push @{$start_codon_venn{$subset}->{"elements"}} , $seqname_to_tops_id{$seqname}.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
+                  push @{$start_codon_venn{$subset}->{"elements"}} , $seqname.":".$sites{$node}->{Position}.",".$sites{$node}->{Strand};
                   $start_codon_venn{$subset}->{"count"} += 1;
                 }
             }
@@ -1325,7 +1398,7 @@ sub process_forward {
             if($is_start_codon) {
                 $left_site =
                 {
-                    SeqName => $gene->seqname(),
+                    SeqName => md5_hex($gene->seqname()),
                     Position => $cds->start(),
                     Type=> "start_codon",
                     Frame => $cds->frame(),
@@ -1334,7 +1407,7 @@ sub process_forward {
             } else {
                 $left_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->start(),
                     Type => "acceptor",
                     Frame => $cds->frame(),
@@ -1344,7 +1417,7 @@ sub process_forward {
             if($is_stop_codon) {
                 $right_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->stop(),
                     Type => "stop_codon",
                     Frame => $cds->frame(),
@@ -1353,25 +1426,26 @@ sub process_forward {
             } else {
                 $right_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->stop(),
                     Type => "donor",
                     Frame => $cds->frame(),
                     Strand => "+"
                 };
             }
+            my $txid = md5_hex($tx->id);
             my $source = $gtf_filename;
-            $left_site = add_site($left_site, $sites_r, $source, $tx->id);
-            $right_site = add_site($right_site, $sites_r, $source, $tx->id);
+            $left_site = add_site($left_site, $sites_r, $source, $txid);
+            $right_site = add_site($right_site, $sites_r, $source, $txid);
 
             if(defined $last_right_site)
             {
 
-                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
-                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
+                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":". $txid;
+                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $txid;
             }
-            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
-            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":". $tx->id;
+            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $txid;
+            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":". $txid;
             $last_right_site = $right_site;
         }
     }
@@ -1413,7 +1487,7 @@ sub process_reverse {
             if($is_start_codon) {
                 $right_site =
                 {
-                    SeqName => $gene->seqname(),
+                    SeqName => md5_hex($gene->seqname()),
                     Position => $cds->stop(),
                     Type=> "start_codon",
                     Frame => $cds->frame(),
@@ -1422,7 +1496,7 @@ sub process_reverse {
             } else {
                 $right_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->stop(),
                     Type => "acceptor",
                     Frame => $cds->frame(),
@@ -1432,7 +1506,7 @@ sub process_reverse {
             if($is_stop_codon) {
                 $left_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->start(),
                     Type => "stop_codon",
                     Frame => $cds->frame(),
@@ -1441,7 +1515,7 @@ sub process_reverse {
             } else {
                 $left_site =
                 {
-                    SeqName =>$gene->seqname(),
+                    SeqName =>md5_hex($gene->seqname()),
                     Position => $cds->start(),
                     Type => "donor",
                     Frame => $cds->frame(),
@@ -1449,15 +1523,16 @@ sub process_reverse {
                 };
             }
             my $source = $gtf_filename;
-            $left_site = add_site($left_site, $sites_r, $source, $tx->id);
-            $right_site = add_site($right_site, $sites_r, $source, $tx->id);
+            my $txid = md5_hex($tx->id);
+            $left_site = add_site($left_site, $sites_r, $source, $txid);
+            $right_site = add_site($right_site, $sites_r, $source, $txid);
             if(defined $last_right_site)
             {
-                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":".$tx->id;
-                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". $tx->id;
+                push @{$last_right_site->{Next}->{get_key_from_site($left_site)}}, $source.":".($txid);
+                push @{$left_site->{From}->{get_key_from_site($last_right_site)}}, $source.":". ($txid);
             }
-            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":". $tx->id;
-            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":".$tx->id;
+            push @{$left_site->{Next}->{get_key_from_site($right_site)}}, $source.":".($txid);
+            push @{$right_site->{From}->{get_key_from_site($left_site)}}, $source.":".($txid);
             $last_right_site = $right_site;
         }
     }
