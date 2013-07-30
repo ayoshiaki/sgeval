@@ -216,7 +216,7 @@ sub generate_result {
     foreach  my $x (@sources) {
       $key .= "|".($names_hash{$x});
     }
-    print OUTPUT $key."\t".$venn{$keyhash}->{"count"}."\n";
+      print OUTPUT $key."\t".$venn{$keyhash}->{"count"}."\n";
     foreach my $el ( @{$venn{$keyhash}->{"elements"}} )
       {
         if($el =~ /((\d|\w){32}):\d+,(-|\+)/){
@@ -548,10 +548,10 @@ sub nucleotide_intron_venn {
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
 
-                  if(($p-2 >= 0) && ($start == $last_end))
-                    {
-                      $start += 1;
-                    }
+		   if(($p-2 >= 0) && ($start == $last_end))
+		    {
+		      $start += 1;
+		    }
                   $last_end = $end;
 
                   push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
@@ -631,8 +631,7 @@ sub nucleotide_venn {
                       pop @sites;
                     }
                 }
-
-              for (my $k = 0; $k <= $#sites; $k++)
+		for (my $k = 0; $k <= $#sites; $k++)
                 {
                   if($k > 0) {
                     foreach my $key (keys %{$source_by_position[$k-1]}){
@@ -655,6 +654,7 @@ sub nucleotide_venn {
                         }
                     }
                 }
+		my %already_counted;
               for (my $p = 1; $p <= $#source_by_position; $p+=1) {
                 my %left_aux;
                 foreach my $source (keys %{$source_by_position[$p-1]}) {
@@ -674,14 +674,17 @@ sub nucleotide_venn {
 
                 my $subset = subset_string(\%left_aux);
                 my $subset2 = subset_string(\%right_aux);
-
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-
-                  if(!($subset2 eq "")){
-                    $end -= 1;
-                  }
+		  if ($subset2 !~ /^\s*$/ && $subset =~ /$subset2/g && length($subset) < length($subset2)) {
+		    $end--;
+		  }
+		  if (defined $already_counted{$subset.$start}) {
+		    $start ++;
+		  }
+		  $already_counted{$subset.$start} = 1;
+		  $already_counted{$subset2.$end} = 1;
                   push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                   push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                   $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
@@ -748,16 +751,24 @@ sub nucleotide_venn_with_intron_partial {
                       my $end = $2;
                       foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
                         {
-                          my $x;
-                          $source =~ /(.+)?:(.+)/;
-                          if($1 eq $ref_source) {
+			  my $x;
+                          my $partA = $source;
+                          my $partB;
+                          if($source =~ /:/) {
+                            ($partA, $partB) = split(/:/, $source);
+                          }
+                          if($partA eq md5_hex($ref_source)) {
+                            my $clean_name = $names_hash{$partA};
+                            my $clean_intron_name = $clean_name."_intron";
                             $x->{"source"} = $source;
                             $x->{"start"} = $start + 1;
                             $x->{"end"} = $end - 1;
-                            $x->{"source"} = $x->{"source"}."_intron";
+                            $x->{"source"} = md5_hex($clean_intron_name);
+			    $names_hash{$x->{"source"}} = $clean_intron_name; 
                             push @{$intervals{$strand}{$start + 1}}, $x;
                             push @{$intervals{$strand}{$end - 1}}, $x;
                           }
+			  
                         }
                     }
                 }
@@ -800,44 +811,56 @@ sub nucleotide_venn_with_intron_partial {
                     }
                 }
 
+		my %already_counted;
 
               for (my $p = 1; $p <= $#source_by_position; $p+=1) {
                 my %left_aux;
-                foreach my $source (keys %{$source_by_position[$p-1]}) {
+
+		foreach my $source (keys %{$source_by_position[$p-1]}) {
                   if(${$source_by_position[$p-1]}{$source} == 1) {
-                    $source =~ /(.+)?:(.+)/;
-                    my $n  = $1;
-                    if($source =~ m/_intron/) {
-                      $left_aux{$n."_intron"} = 1;
-                    } else {
-                      $left_aux{$n} = 1;
+                    my $partA = $source;
+                    my $partB;
+                    if($source =~ /:/) {
+                      ($partA, $partB) = split(/:/, $source);
                     }
+                    my $n = $names_hash{$partA};
+                    $names_hash {md5_hex($n)} = $n;
+                    $left_aux{md5_hex($n)} = 1;
                   }
                 }
                 my %right_aux;
                 foreach my $source (keys %{$source_by_position[$p]}) {
                   if(${$source_by_position[$p]}{$source} == 1) {
-                    $source =~ /(.+)?:(.+)/;
-                    my $n = $1;
-                    if($source =~ m/_intron/) {
-                      $right_aux{$n."_intron"} = 1;
-                    } else {
-                      $right_aux{$n} = 1;
+                    my $partA = $source;
+                    my $partB;
+                    if($source =~ /:/) {
+                      ($partA, $partB) = split(/:/, $source);
                     }
+                    my $n = $names_hash{$partA};
+                    $names_hash{md5_hex($n)} = $n;
+                    $right_aux{md5_hex($n)} = 1;
                   }
                 }
-
+		
                 my $subset = subset_string(\%left_aux);
                 my $subset2 = subset_string(\%right_aux);
-
+                 
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-                  if($subset2 =~ m/$subset/)
-                    {
-                      $end -= 1;
-                    }
+		  print "<$subset> <$subset2> <$start> <$end>\n";
+		  if ($subset2 !~ /^\s*$/ && $subset =~ /$subset2/g && length($subset) < length($subset2)) {
+		    print "END\n";
+		    $end--;
+		  }
+		  if (defined $already_counted{$subset.$start}) {
+		    print "START\n";
 
+		    $start ++;
+		  }
+		  $already_counted{$subset.$start} = 1;
+		  $already_counted{$subset2.$end} = 1;
+                
                     push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
                     push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
                     $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
@@ -852,168 +875,7 @@ sub nucleotide_venn_with_intron_partial {
 
 
 
-sub nucleotide_intron_venn_partial {
-  my %nucleotide_venn;
-  foreach my $seqname (keys %component_by_seqname)
-    {
-      foreach my $c (@{$component_by_seqname{$seqname}})
-        {
-          my %intervals;
-          foreach my $node (@{$component{$c}})
-            {
-              if(
-                 ($node =~ /start/ && $sites{$node}->{Strand} eq "+")
-                 ||
-                 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "+")
-                 ||
-                 ($node =~ /stop/ && $sites{$node}->{Strand} eq "-")
-                 ||
-                 ($node =~ /donor/ && $sites{$node}->{Strand} eq "-")
-                )
-                {
-                  my $strand = $sites{$node}->{Strand};
-                  foreach my $next_node (keys %{$sites{$node}->{Next}})
-                    {
-                      $node =~ m/(.+)?:(\d+),(.+)/;
-                      my $start = $2;
-                      $next_node =~ m/(.+)?:(\d+),(.+)/;
-                      my $end = $2;
-                      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
-                        {
-                          $source =~ /(.+)?:(.+)/;
-                          if($source eq $ref_source) {
-                              my $x;
-                              $x->{"source"} = $1;
-                              $x->{"start"} = $start;
-                              $x->{"end"} = $end;
-                              $x->{"type"} = "exon";
-                              push @{$intervals{$strand}{$start}}, $x;
-                              push @{$intervals{$strand}{$end}}, $x;
-                          }
-                        }
-                    }
-                }
-            }
-
-          foreach my $node (@{$component{$c}})
-            {
-              if(
-                 ($node =~ /donor/ && $sites{$node}->{Strand} eq "+")
-                 ||
-                 ($node =~ /acceptor/ && $sites{$node}->{Strand} eq "-")
-                )
-                {
-                  my $strand = $sites{$node}->{Strand};
-                  foreach my $next_node (keys %{$sites{$node}->{Next}})
-                    {
-                      $node =~ m/(.+)?:(\d+),(.+)/;
-                      my $start = $2;
-                      $next_node =~ m/(.+)?:(\d+),(.+)/;
-                      my $end = $2;
-                      foreach my $source (@{$sites{$node}->{Next}->{$next_node}})
-                        {
-                            $source =~ /(.+)?:(.+)/;
-                            my $x;
-                            $x->{"source"} = $1;
-                            $x->{"start"} = $start+1;
-                            $x->{"end"} = $end-1;
-                            $x->{"type"} = "intron";
-                            push @{$intervals{$strand}{$start}}, $x;
-                            push @{$intervals{$strand}{$end}}, $x;
-
-                        }
-                    }
-                }
-            }
-
-
-          foreach my $strand (keys %intervals)
-            {
-              my @sorted = sort {$a <=> $b}( keys %{$intervals{$strand}});
-              my @sites;
-              my @source_by_position;
-
-              foreach my $p (@sorted)
-                {
-                  push @sites, $p;
-                  if($#sites-1 >= 0 && $sites[$#sites] == $sites[$#sites-1])
-                    {
-                      pop @sites;
-                    }
-                }
-
-
-              for (my $k = 0; $k <= $#sites; $k++)
-                {
-                  if($k > 0) {
-                    foreach my $key (keys %{$source_by_position[$k-1]}){
-                      ${$source_by_position[$k]}{$key} =  ${$source_by_position[$k-1]}{$key}  ;
-                    }
-                  }
-                  my $inside_ref = 0;
-                 foreach my $i (@{$intervals{$strand}{$sites[$k]}})
-                    {
-                      if($i->{"source"} eq $ref_source) {
-                        $inside_ref = 1;
-                        last;
-                      }
-                    }
-                 foreach my $i (@{$intervals{$strand}{$sites[$k]}})
-                    {
-                      if(($i->{"start"} == $sites[$k]) && ($i->{"type"} eq "intron") && $inside_ref)
-                        {
-                          ${$source_by_position[$k]}{$i->{"source"}} = 1;
-                        }
-                      if(($i->{"end"} == $sites[$k])  && ($i->{"type"} eq "intron") )
-                        {
-                          ${$source_by_position[$k]}{$i->{"source"}} = 0;
-                        }
-                    }
-                }
-
-              for (my $p = 1; $p <= $#source_by_position; $p+=1) {
-                my %left_aux;
-                foreach my $source (keys %{$source_by_position[$p-1]}) {
-                  if(${$source_by_position[$p-1]}{$source} == 1) {
-                    $left_aux{$source} = 1;
-                  }
-                }
-
-                my %right_aux;
-                foreach my $source (keys %{$source_by_position[$p]}) {
-                  if(${$source_by_position[$p]}{$source} == 1) {
-                    $right_aux{$source} = 1;
-                  }
-                }
-
-                my $subset = subset_string(\%left_aux);
-                my $subset2 = subset_string(\%right_aux);
-
-                if(!$subset eq ""){
-                  my $start = $sites[$p-1];
-                  my $end = $sites[$p];
-                  if(!($subset2 eq "")){
-                    $end -= 1;
-                  }
-                  if($subset =~ m/$ref_source/) {
-                    $subset =~ s/$ref_source."_intron"\|//g;
-                    $subset =~ s/\|$ref_source."_intron"//g;
-                    push @{$nucleotide_venn{$subset}->{"elements"}},$seqname.":".$start."-".$end.",".$strand.",".($end - $start + 1);
-                    push @{$nucleotide_venn{$subset}->{"interval"}->{$seqname}->{$strand}},$start."-".$end;
-                    $nucleotide_venn{$subset}->{"count"}  += $end - $start + 1;
-                  }
-                }
-              }
-            }
-        }
-    }
-  return %nucleotide_venn;
-}
-
-
-
-
-
+              
 sub exon_overlaped_venn {
   my $nucleotide_venn_ref = shift;
   my %nucleotide_venn = %{$nucleotide_venn_ref};
