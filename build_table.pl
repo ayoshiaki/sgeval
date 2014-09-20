@@ -18,9 +18,7 @@ if( ($#directory <0)) {
 my @files = ("gene_exact_accuracy.txt",
              "exon_exact_accuracy.txt",
              "intron_exact_accuracy.txt",
-             "intron_exact_accuracy.txt",
              "nucleotide_exon_accuracy.txt",
-             "nucleotide_intron_accuracy.txt",
              "start_accuracy.txt",
              "stop_accuracy.txt",
              "acceptor_accuracy.txt",
@@ -33,12 +31,11 @@ foreach my $dir (@directory)
   {
     foreach my $file (@files)
       {
-        $dir =~ /cross_validation_(\d+)/;
-        my $training_set_size = $1*100;
+        my $training_set_size = 2000;
         my $type = $file;
         $type =~ s/_accuracy.txt//g;
 	for (my $k  = 0; $k < 5; $k++) {
-	  open (IN, "<$dir/compara$k/$file") or die "$!";
+	  open (IN, "<$dir/compara$k/$file") or die "$file: $!";
 	  my $txt;
 	  foreach my $line (<IN>)
 	    {
