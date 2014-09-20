@@ -848,14 +848,11 @@ sub nucleotide_venn_with_intron_partial {
                 if(!$subset eq ""){
                   my $start = $sites[$p-1];
                   my $end = $sites[$p];
-		  print "<$subset> <$subset2> <$start> <$end>\n";
+		  # print "<$subset> <$subset2> <$start> <$end>\n";
 		  if ($subset2 !~ /^\s*$/ && $subset =~ /$subset2/g && length($subset) < length($subset2)) {
-		    print "END\n";
 		    $end--;
 		  }
 		  if (defined $already_counted{$subset.$start}) {
-		    print "START\n";
-
 		    $start ++;
 		  }
 		  $already_counted{$subset.$start} = 1;

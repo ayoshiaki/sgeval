@@ -20,14 +20,60 @@ if( ($#directory <0) || !defined $output) {
 my @files = ("gene_exact_accuracy.txt",
              "exon_exact_accuracy.txt",
              "intron_exact_accuracy.txt",
-             "intron_exact_accuracy.txt",
              "nucleotide_exon_accuracy.txt",
-             "nucleotide_exon_partial_accuracy.txt",
              "nucleotide_intron_accuracy.txt",
              "start_accuracy.txt",
              "stop_accuracy.txt",
              "acceptor_accuracy.txt",
              "donor_accuracy.txt");
+my @files_venn = ("gene_exact_venn.txt",
+                  "exon_exact_venn.txt",
+                  "intron_exact_venn.txt",
+                  "nucleotide_exon_venn.txt",
+                  "nucleotide_intron_venn.txt",
+                  "start_venn.txt",
+                  "stop_venn.txt",
+                  "acceptor_venn.txt",
+                  "donor_venn.txt");
+mkdir $output;
+foreach my $file (@files_venn)
+  {
+    my %soma;
+    my $total = 0;
+    foreach my $dir (@directory)
+      {
+        $total ++;
+        open (IN, "<$dir/$file") or die "$!";
+        my $txt;
+        foreach my $line (<IN>)
+          {
+            $txt .= $line;
+          }
+        close(IN);
+
+        my @entries = split("//", $txt);
+        foreach my $r (@entries)
+          {
+            if ($r =~ /^\s*$/)
+              {
+                last;
+              }
+            if($r =~ m/(.+)\t(\d+)\n.+/){
+              $soma{$1} += $2;
+            }
+          }
+      }
+    open (OUT, ">$output/$file") or die "$!";
+    foreach my $entry (keys %soma){
+      print OUT $entry."\t".($soma{$entry}/$total)."\n";
+    }
+    close(OUT);
+  }
+
+
+
+
+
 my %results;
 my %total;
 foreach my $file (@files)
@@ -72,7 +118,7 @@ foreach my $file (@files)
       }
   }
 
-mkdir $output;
+
 foreach my $file (keys %results)
   {
     open (OUT, ">$output/$file") or die "$!";
@@ -138,6 +184,9 @@ sub var {
   foreach my $x (@values) {
     $n    = $n + 1;
     $sum1 = $sum1 + $x;
+  }
+  if ($n == 1) {
+    return 0;
   }
   my $mean = $sum1/$n;
 
